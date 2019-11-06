@@ -39,6 +39,8 @@ class HookHandler(BaseHTTPRequestHandler):
             self.send_response(501)
 
     def _check_secret(self, data):
+        if "X-Hub-Signature" not in self.headers:
+            return false
         sha, sig = self.headers["X-Hub-Signature"].split("=")
         mac = hmac.new(secret.encode(), msg=data, digestmod=hashlib.sha1)
         return hmac.compare_digest(mac.hexdigest(), sig)
