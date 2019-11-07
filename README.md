@@ -65,7 +65,7 @@ if [ "X`jq .pull_request.merged $2 | tr -d '\"'`" != "Xtrue" ]; then
 fi
 ```
 
-where (`jq`)[https://stedolan.github.io/jq/] is a command-line JSON processor.
+where [`jq`](https://stedolan.github.io/jq/) is a command-line JSON processor.
 If all three of those `if` statements succeed, then we know that a pull request
 has been merged. As this suggests, some GitHub events are slightly trickier
 than others to process and writing the above in shell script doesn't make it
