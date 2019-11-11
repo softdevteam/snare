@@ -27,10 +27,11 @@ class HookHandler(BaseHTTPRequestHandler):
 
         path = os.path.join(repo_scripts_dir, owner, repo)
         if os.path.exists(path):
-            with tempfile.NamedTemporaryFile() as jsonf:
-                jsonf.write(data_str.encode())
-                event = self.headers["X-GitHub-Event"]
-                rtn = subprocess.run([path, event, jsonf.name])
+            with tempfile.TemporaryDirectory() as tmpdir:
+                with tempfile.NamedTemporaryFile() as jsonf:
+                    jsonf.write(data_str.encode())
+                    event = self.headers["X-GitHub-Event"]
+                    rtn = subprocess.run([path, event, jsonf.name], cwd=tmpdir)
             if rtn.returncode == 0:
                 self.send_response(200)
             else:

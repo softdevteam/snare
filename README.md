@@ -19,7 +19,9 @@ where:
  * `<repo-programs-dir>` is the directory where the per-repo programs are
    stored. For a repository `repo` owned by `user` the command
    `<repo-programs-dir>/<user>/<repo> <event> <path to GitHub JSON>` will be
-   run.
+   run. Note that per-repo programs are run with their current working
+   directory set to a temporary directory to which they can freely write and
+   which will be automatically removed when they have completed.
  * `<secrets-path>` is the file containing the GitHub secret which guarantees
    that hooks are coming from your GitHub repository and not a malfeasant. Note
    that leading and trailing whitespace in this file is ignored.
