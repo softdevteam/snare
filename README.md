@@ -40,7 +40,7 @@ will be executed, where: `pull_request` is the name of the GitHub event; and
 `/path/to/json` is a path to a file containing the complete GitHub JSON for
 that event. The `softdevteam_snare` program can then execute whatever it wants.
 In order to work out precisely what event has happened, you will need to read
-(GitHub's webhooks documentation)[https://developer.github.com/webhooks/].
+[GitHub's webhooks documentation](https://developer.github.com/webhooks/).
 
 
 ## Example repository program
