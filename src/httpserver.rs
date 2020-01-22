@@ -106,7 +106,7 @@ async fn authenticate(req: Request<Body>, snare: &Arc<Snare>) -> Result<Bytes, (
         .map_err(|_| ())?;
 
     // Verify that this request was signed by the same secret that we have.
-    let mut mac = Hmac::<Sha1>::new_varkey(snare.config.secret.as_bytes()).map_err(|_| ())?;
+    let mut mac = Hmac::<Sha1>::new_varkey(snare.config.secret.unsecure()).map_err(|_| ())?;
     mac.input(&*data);
     mac.verify(&hex::decode(sig).map_err(|_| ())?)
         .map_err(|_| ())?;
