@@ -10,11 +10,16 @@ can then perform whatever actions it wants.
 `snare` requires three command-line arguments to be specified:
 
 ```
-Usage: snare -p <port> -r <repo-programs-dir> -s <secrets-path>
+Usage: snare [-e email] [-j <max-jobs>] -p <port> -r <repos-dir> -s <secrets-path>
 ```
 
 where:
 
+ * `<email>` is an (optional) email address to which any errors running per-repo
+   programs will be sent (warning: full stderr/stdout will be sent, so consider
+   carefully whether these have sensitive information or not).
+ * `<max-jobs>` is an (optional) non-zero integer specifying the maximum number
+   of jobs to run in parallel.
  * `<port>` is a port number (e.g. 4567).
  * `<repo-programs-dir>` is the directory where the per-repo programs are
    stored. For a repository `repo` owned by `user` the command
