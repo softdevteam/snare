@@ -12,6 +12,8 @@ mod jobrunner;
 mod queue;
 
 use std::{
+    error::Error,
+    fmt::Display,
     net::SocketAddr,
     os::unix::io::RawFd,
     process,
@@ -31,16 +33,19 @@ pub(crate) struct Snare {
     event_write_fd: RawFd,
 }
 
+/// Exit with a fatal error, printing the contents of `err`.
+fn fatal<E: Into<Box<dyn Error>> + Display>(msg: &str, err: E) -> ! {
+    eprintln!("{}: {}", msg, err);
+    process::exit(1);
+}
+
 #[tokio::main]
 pub async fn main() {
     let config = Config::new();
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
     let server = match Server::try_bind(&addr) {
         Ok(s) => s,
-        Err(e) => {
-            println!("Couldn't bind to port: {:?}", e);
-            process::exit(1);
-        }
+        Err(e) => fatal("Couldn't bind to port", e),
     };
 
     let (event_read_fd, event_write_fd) = pipe2(OFlag::O_NONBLOCK).unwrap();
@@ -53,10 +58,7 @@ pub async fn main() {
 
     match jobrunner::attend(Arc::clone(&snare)) {
         Ok(x) => x,
-        Err(_) => {
-            eprintln!("Couldn't start runner thread.");
-            process::exit(1);
-        }
+        Err(e) => fatal("Couldn't start runner thread", e),
     }
 
     httpserver::serve(server, Arc::clone(&snare)).await;
