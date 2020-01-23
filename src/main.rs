@@ -12,11 +12,13 @@ mod jobrunner;
 mod queue;
 
 use std::{
+    net::SocketAddr,
     os::unix::io::RawFd,
     process,
     sync::{Arc, Mutex},
 };
 
+use hyper::Server;
 use nix::{fcntl::OFlag, unistd::pipe2};
 
 use config::Config;
@@ -31,9 +33,17 @@ pub(crate) struct Snare {
 
 #[tokio::main]
 pub async fn main() {
-    let (event_read_fd, event_write_fd) = pipe2(OFlag::O_NONBLOCK).unwrap();
-
     let config = Config::new();
+    let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
+    let server = match Server::try_bind(&addr) {
+        Ok(s) => s,
+        Err(e) => {
+            println!("Couldn't bind to port: {:?}", e);
+            process::exit(1);
+        }
+    };
+
+    let (event_read_fd, event_write_fd) = pipe2(OFlag::O_NONBLOCK).unwrap();
     let snare = Arc::new(Snare {
         config,
         queue: Mutex::new(Queue::new()),
@@ -48,7 +58,6 @@ pub async fn main() {
             process::exit(1);
         }
     }
-    loop {
-        httpserver::serve(Arc::clone(&snare)).await;
-    }
+
+    httpserver::serve(server, Arc::clone(&snare)).await;
 }

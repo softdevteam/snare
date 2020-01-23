@@ -1,24 +1,24 @@
-use std::{convert::Infallible, net::SocketAddr, path::PathBuf, sync::Arc, time::Instant};
+use std::{convert::Infallible, path::PathBuf, process, sync::Arc, time::Instant};
 
 use hex;
 use hmac::{Hmac, Mac};
 use hyper::service::{make_service_fn, service_fn};
-use hyper::{self, body::Bytes, Body, Request, Response, Server, StatusCode};
+use hyper::{self, body::Bytes, server::conn::AddrIncoming, Body, Request, Response, StatusCode};
 use json;
 use percent_encoding::percent_decode;
 use sha1::Sha1;
 
 use crate::{queue::QueueJob, Snare};
 
-pub(crate) async fn serve(snare: Arc<Snare>) {
-    let addr = SocketAddr::from(([0, 0, 0, 0], snare.config.port));
+pub(crate) async fn serve(server: hyper::server::Builder<AddrIncoming>, snare: Arc<Snare>) {
     let make_svc = make_service_fn(|_| {
         let snare = Arc::clone(&snare);
         async { Ok::<_, Infallible>(service_fn(move |req| handle(req, Arc::clone(&snare)))) }
     });
 
-    if let Err(e) = Server::bind(&addr).serve(make_svc).await {
+    if let Err(e) = server.serve(make_svc).await {
         eprintln!("Warning: {}", e);
+        process::exit(1)
     }
 }
 
