@@ -7,6 +7,7 @@ use std::{
 };
 
 use getopts::Options;
+use secstr::SecStr;
 
 pub struct Config {
     /// The maximum number of parallel jobs to run.
@@ -16,7 +17,7 @@ pub struct Config {
     /// A *fully canonicalised* path to the directory containing per-repo programs.
     pub reposdir: String,
     /// The GitHub secret used to validate requests.
-    pub secret: String,
+    pub secret: SecStr,
     /// An optional email address to send errors to.
     pub email: Option<String>,
 }
@@ -85,10 +86,13 @@ impl Config {
                 .opt_str("s")
                 .unwrap_or_else(|| error("A secrets path must be specified."));
             let path = Path::new(p);
-            read_to_string(path)
-                .unwrap_or_else(|_| error("Couldn't read secrets file."))
-                .trim()
-                .to_owned()
+            SecStr::new(
+                read_to_string(path)
+                    .unwrap_or_else(|_| error("Couldn't read secrets file."))
+                    .trim()
+                    .to_owned()
+                    .into_bytes(),
+            )
         };
 
         Config {
