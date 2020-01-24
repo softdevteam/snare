@@ -21,14 +21,9 @@ use crate::{queue::QueueJob, Snare};
 
 /// The size of the temporary read buffer in bytes. Should be >= PIPE_BUF for performance reasons.
 const READBUF: usize = 8 * 1024;
-/// Maximum time to wait in `poll` (in seconds) while waiting for child processes to terminate.
+/// Maximum time to wait in `poll` (in seconds) while waiting for child processes to terminate
+/// and/or because there are jobs on the queue that we haven't been able to run yet.
 const WAIT_TIMEOUT: i32 = 1;
-/// Maximum time to wait in `poll` (in seconds) while there are jobs on the queue that we haven't
-/// been able to run.
-const RECHECK_TIMEOUT: i32 = 5;
-/// Maximum time to wait in `poll` (in seconds). This is really an exercise in "just in case"
-/// paranoia in case we somehow weren't notified of data to read or similar.
-const DEFAULT_TIMEOUT: i32 = 60;
 
 struct JobRunner {
     snare: Arc<Snare>,
@@ -72,14 +67,18 @@ impl JobRunner {
         // A scratch buffer used to read from files.
         let mut buf = Box::new([0; READBUF]);
         loop {
-            let timeout = if num_waiting > 0 {
-                WAIT_TIMEOUT
-            } else if check_queue {
-                RECHECK_TIMEOUT
+            // If we're waiting for jobs to die or if there are jobs on the queue we haven't been
+            // able to run for temporary reasons, then wait a short amount of time and try again.
+            // Notice that the second clause is a bit subtle: if there are jobs on the queue, but
+            // we're all running the maximum number of jobs, then there's no point in waking up.
+            let timeout = if num_waiting > 0
+                || (check_queue && self.num_running < self.snare.config.maxjobs)
+            {
+                WAIT_TIMEOUT * 1000
             } else {
-                DEFAULT_TIMEOUT
+                -1
             };
-            poll(&mut self.pollfds, timeout * 1000).ok();
+            poll(&mut self.pollfds, timeout).ok();
 
             // See if any of our active jobs have events. Knowing when a pipe is actually closed is
             // surprisingly hard. https://www.greenend.org.uk/rjk/tech/poll.html has an interesting
