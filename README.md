@@ -7,32 +7,55 @@ can then perform whatever actions it wants.
 
 ## Basic usage
 
-`snare` requires three command-line arguments to be specified:
+`snare` has the following command-line format:
 
 ```
-Usage: snare [-e email] [-j <max-jobs>] -p <port> -r <repos-dir> -s <secrets-path>
+Usage: snare [-c <config-path>]
 ```
 
 where:
 
- * `<email>` is an (optional) email address to which any errors running per-repo
-   programs will be sent (warning: full stderr/stdout will be sent, so consider
-   carefully whether these have sensitive information or not).
- * `<max-jobs>` is an (optional) non-zero integer specifying the maximum number
-   of jobs to run in parallel.
- * `<port>` is a port number (e.g. 4567).
- * `<repo-programs-dir>` is the directory where the per-repo programs are
-   stored. For a repository `repo` owned by `user` the command
-   `<repo-programs-dir>/<user>/<repo> <event> <path to GitHub JSON>` will be
-   run. Note that per-repo programs are run with their current working
-   directory set to a temporary directory to which they can freely write and
-   which will be automatically removed when they have completed.
- * `<secrets-path>` is the file containing the GitHub secret which guarantees
-   that hooks are coming from your GitHub repository and not a malfeasant. Note
-   that leading and trailing whitespace in this file is ignored.
+ * `<config-path>` is a path to a `snare.conf` configuration file. If not
+   specified explicitly, the following locations will be searched, in order:
+     * `/etc/snare.conf/`
+     * `~/.snare.conf`
 
-The most important part of this are the per-repo programs. For example,
-`snare`'s GitHub repository is
+
+## Configuration file
+
+The configuration file supports the following options:
+
+ * `email = "<address>"` optionally specifies an email address to which any
+   errors running per-repo programs will be sent (warning: full stderr/stdout
+   will be sent, so consider carefully whether these have sensitive information
+   or not).
+ * `maxjobs = <int>` is an (optional) non-zero integer specifying the maximum
+   number of jobs to run in parallel. Defaults to the number of CPUs in the
+   machine.
+ * `port = <int>` is a mandatory port number to listen on (e.g. 4567).
+ * `reposdir = "<path>"` is the directory where the per-repo programs are
+   stored. For a repository `repo` owned by `user` the command
+   `<reposdir>/<user>/<repo> <event> <path to GitHub JSON>` will be run. Note
+   that per-repo programs are run with their current working directory set to a
+   temporary directory to which they can freely write and which will be
+   automatically removed when they have completed.
+ * `secret = "<secret>"` is the mandatory GitHub secret which guarantees that
+   hooks are coming from your GitHub repository and not a malfeasant.
+
+The minimal configuration file is thus:
+
+```
+port = <port>
+reposdir = "<path>"
+secret = "<secret>"
+```
+
+
+## Per-repo programs
+
+When using snare, the *per-repo programs* do the actual work of executing
+specific actions for a given repository.  For example, `snare`'s GitHub
+repository is
 [`https://github.com/softdevteam/snare`](https://github.com/softdevteam/snare).
 If we set up a web hook up for that repository that notifies us of pull request
 events, then the command:

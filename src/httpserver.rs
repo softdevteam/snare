@@ -8,7 +8,7 @@ use json;
 use percent_encoding::percent_decode;
 use sha1::Sha1;
 
-use crate::{fatal, queue::QueueJob, Snare};
+use crate::{fatal_err, queue::QueueJob, Snare};
 
 pub(crate) async fn serve(server: hyper::server::Builder<AddrIncoming>, snare: Arc<Snare>) {
     let make_svc = make_service_fn(|_| {
@@ -17,7 +17,7 @@ pub(crate) async fn serve(server: hyper::server::Builder<AddrIncoming>, snare: A
     });
 
     if let Err(e) = server.serve(make_svc).await {
-        fatal("Couldn't start HTTP server", e);
+        fatal_err("Couldn't start HTTP server", e);
     }
 }
 
