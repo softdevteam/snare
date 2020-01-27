@@ -8,15 +8,23 @@ pub(crate) struct QueueJob {
     pub req_time: Instant,
     pub event_type: String,
     pub json_str: String,
+    pub email: Option<String>,
 }
 
 impl QueueJob {
-    pub fn new(path: String, req_time: Instant, event_type: String, json_str: String) -> Self {
+    pub fn new(
+        path: String,
+        req_time: Instant,
+        event_type: String,
+        json_str: String,
+        email: Option<String>,
+    ) -> Self {
         QueueJob {
             path,
             req_time,
             event_type,
             json_str,
+            email,
         }
     }
 }

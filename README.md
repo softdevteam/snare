@@ -23,32 +23,73 @@ where:
 
 ## Configuration file
 
-The configuration file supports the following options:
+The configuration file supports the following top-level options:
 
- * `email = "<address>"` optionally specifies an email address to which any
-   errors running per-repo programs will be sent (warning: full stderr/stdout
-   will be sent, so consider carefully whether these have sensitive information
-   or not).
  * `maxjobs = <int>` is an (optional) non-zero integer specifying the maximum
    number of jobs to run in parallel. Defaults to the number of CPUs in the
    machine.
  * `port = <int>` is a mandatory port number to listen on (e.g. 4567).
+ * `github { ... }` specifies GitHub specific options.
+
+The `github` block supports the following options:
+
  * `reposdir = "<path>"` is the directory where the per-repo programs are
    stored. For a repository `repo` owned by `user` the command
    `<reposdir>/<user>/<repo> <event> <path to GitHub JSON>` will be run. Note
    that per-repo programs are run with their current working directory set to a
    temporary directory to which they can freely write and which will be
    automatically removed when they have completed.
- * `secret = "<secret>"` is the mandatory GitHub secret which guarantees that
-   hooks are coming from your GitHub repository and not a malfeasant.
+
+  * `match "<regex>" { <match-options> }` where `regex` is a regular expression
+    in [Rust regex format](https://docs.rs/regex/) that must match against a
+    `owner/repo` full repository name. If it matches, then `<match-options>`
+    are set for that repository. Note that `regex` is implicitly embedded in
+    `^<regex>$` i.e. `regex` must match against the full repository name and
+    not a subset (so the regex `a/b` does not match against the full repository
+    name `a/bc`, but the regex `a/b.*` does match against `a/bc`).
+
+A `match` block supports the following options:
+
+ * `email = "<address>"` optionally specifies an email address to which any
+   errors running per-repo programs will be sent (warning: full stderr/stdout
+   will be sent, so consider carefully whether these have sensitive information
+   or not).
+ * `secret = "<secret>"` is an optional GitHub secret which guarantees that
+   hooks are coming from your GitHub repository and not a malfeasant. Although
+   this is optional, we *highly* recommend setting it in all cases.
 
 The minimal configuration file is thus:
 
 ```
 port = <port>
-reposdir = "<path>"
-secret = "<secret>"
+
+github {
+  reposdir = "<path>"
+}
 ```
+
+`match` blocks are evaluated in order from top to bottom with each successful
+match overriding previous settings. This allows users to specify defaults which
+are only overridden for specific repositories. For example, for the following
+configuration file:
+
+```
+port = <port>
+
+github {
+  reposdir = "<path>"
+  match ".*" {
+    email = "abc@def.com"
+    secret = "very"
+  }
+  match "a/b" {
+    email = "ghi@jkl.com"
+  }
+}
+```
+
+the repository `c/d` will have errors sent to `abc@def.com` but `a/b` will have
+errors sent to `ghi@jkl.com`. Note that both repositories share the same GitHub secret `very`.
 
 
 ## Per-repo programs

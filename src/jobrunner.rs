@@ -161,7 +161,8 @@ impl JobRunner {
                     }
                     if exited {
                         if !exited_success {
-                            self.sendemail(&self.running[i].as_ref().unwrap().stderrout_file);
+                            let job = &self.running[i].as_ref().unwrap();
+                            self.sendemail(&job.email, &job.stderrout_file);
                         }
                         remove_file(&self.running[i].as_ref().unwrap().json_path).ok();
                         self.running[i] = None;
@@ -306,6 +307,7 @@ impl JobRunner {
                             stderrout_file,
                             stderr_hup: false,
                             stdout_hup: false,
+                            email: qj.email,
                         });
                     }
                 }
@@ -342,8 +344,8 @@ impl JobRunner {
     }
 
     /// If the user has specified an email address, send the contents of
-    fn sendemail(&self, mut file: &File) {
-        if let Some(ref toaddr) = self.snare.config.email {
+    fn sendemail(&self, email: &Option<String>, mut file: &File) {
+        if let Some(ref toaddr) = email {
             let mut buf = Vec::new();
             buf.extend("Subject: snare error\n\n".as_bytes());
             file.seek(SeekFrom::Start(0)).ok();
@@ -390,6 +392,8 @@ struct Job {
     stderr_hup: bool,
     /// Has the child process's stdout been closed?
     stdout_hup: bool,
+    /// The email address to send to if this job fails.
+    email: Option<String>,
 }
 
 fn set_nonblock(fd: RawFd) -> Result<(), Box<dyn Error>> {

@@ -9,17 +9,55 @@ TopLevelOptions -> Result<Vec<TopLevelOption<StorageT>>, ()>:
   ;
 
 TopLevelOption -> Result<TopLevelOption<StorageT>, ()>:
-    "EMAIL" "=" "STRING" { Ok(TopLevelOption::Email(map_err($3)?)) }
+    "GITHUB" "{" OptionsOrMatches "}" {
+        let (options, matches) = $3?;
+        Ok(TopLevelOption::GitHub($1.unwrap_or_else(|x| x), options, matches))
+    }
   | "MAXJOBS" "=" "INT" { Ok(TopLevelOption::MaxJobs(map_err($3)?)) }
   | "PORT" "=" "INT" { Ok(TopLevelOption::Port(map_err($3)?)) }
-  | "REPOSDIR" "=" "STRING" { Ok(TopLevelOption::ReposDir(map_err($3)?)) }
-  | "SECRET" "=" "STRING" { Ok(TopLevelOption::Secret(map_err($3)?)) }
+  ;
+
+OptionsOrMatches -> Result<(Vec<ProviderOption<StorageT>>, Vec<Match<StorageT>>), ()>:
+    OptionsOrMatches ProviderOption {
+        let (mut options, matches) = $1?;
+        options.push($2?);
+        Ok((options, matches))
+    }
+  | OptionsOrMatches Match {
+        let (options, mut matches) = $1?;
+        matches.push($2?);
+        Ok((options, matches))
+    }
+  | { Ok((vec![], vec![])) }
+  ;
+
+ProviderOption -> Result<ProviderOption<StorageT>, ()>:
+    "REPOSDIR" "=" "STRING" { Ok(ProviderOption::ReposDir(map_err($3)?)) }
+  ;
+
+Matches -> Result<Vec<Match<StorageT>>, ()>:
+    Matches Match { flattenr($1, $2) }
+  | { Ok(vec![]) }
+  ;
+
+Match -> Result<Match<StorageT>, ()>:
+    "MATCH" "STRING" "{" PerRepoOptions "}" { Ok(Match{re: map_err($2)?, options: $4? }) }
+  ;
+
+PerRepoOptions -> Result<Vec<PerRepoOption<StorageT>>, ()>:
+    PerRepoOptions PerRepoOption { flattenr($1, $2) }
+  | { Ok(vec![]) }
+  ;
+
+PerRepoOption -> Result<PerRepoOption<StorageT>, ()>:
+    "EMAIL" "=" "STRING" { Ok(PerRepoOption::Email(map_err($3)?)) }
+  | "SECRET" "=" "STRING" { Ok(PerRepoOption::Secret(map_err($3)?)) }
   ;
 
 %%
 use lrpar::Lexeme;
 
-use crate::config::TopLevelOption;
+use crate::config_ast::{TopLevelOption, Match, PerRepoOption, ProviderOption};
 
 type StorageT = u8;
 
