@@ -74,7 +74,7 @@ impl Config {
             Some(Ok(opts)) => {
                 for opt in opts {
                     match opt {
-                        GenericOption::Email(lexeme) => {
+                        TopLevelOption::Email(lexeme) => {
                             if email.is_some() {
                                 conf_fatal(
                                     &lexer,
@@ -86,7 +86,7 @@ impl Config {
                             let email_str = &email_str[1..email_str.len() - 1];
                             email = Some(email_str.to_owned());
                         }
-                        GenericOption::MaxJobs(lexeme) => {
+                        TopLevelOption::MaxJobs(lexeme) => {
                             if maxjobs.is_some() {
                                 conf_fatal(
                                     &lexer,
@@ -106,7 +106,7 @@ impl Config {
                                 Err(e) => conf_fatal(&lexer, lexeme, &format!("{}", e)),
                             }
                         }
-                        GenericOption::Port(lexeme) => {
+                        TopLevelOption::Port(lexeme) => {
                             if port.is_some() {
                                 conf_fatal(&lexer, lexeme, "Mustn't specify 'port' more than once");
                             }
@@ -115,7 +115,7 @@ impl Config {
                                 conf_fatal(&lexer, lexeme, &format!("Invalid port '{}'", port_str))
                             }));
                         }
-                        GenericOption::ReposDir(lexeme) => {
+                        TopLevelOption::ReposDir(lexeme) => {
                             if reposdir.is_some() {
                                 conf_fatal(
                                     &lexer,
@@ -139,7 +139,7 @@ impl Config {
                                 }
                             });
                         }
-                        GenericOption::Secret(lexeme) => {
+                        TopLevelOption::Secret(lexeme) => {
                             if secret.is_some() {
                                 conf_fatal(
                                     &lexer,
@@ -230,7 +230,7 @@ fn search_snare_conf() -> Option<PathBuf> {
     None
 }
 
-pub enum GenericOption<StorageT> {
+pub enum TopLevelOption<StorageT> {
     Email(Lexeme<StorageT>),
     MaxJobs(Lexeme<StorageT>),
     Port(Lexeme<StorageT>),
