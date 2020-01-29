@@ -28,7 +28,7 @@ use config::Config;
 use queue::Queue;
 
 pub(crate) struct Snare {
-    config: Config,
+    config: Mutex<Config>,
     queue: Mutex<Queue>,
     event_read_fd: RawFd,
     event_write_fd: RawFd,
@@ -57,7 +57,7 @@ pub async fn main() {
 
     let (event_read_fd, event_write_fd) = pipe2(OFlag::O_NONBLOCK).unwrap();
     let snare = Arc::new(Snare {
-        config,
+        config: Mutex::new(config),
         queue: Mutex::new(Queue::new()),
         event_read_fd,
         event_write_fd,

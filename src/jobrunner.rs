@@ -27,6 +27,9 @@ const WAIT_TIMEOUT: i32 = 1;
 
 struct JobRunner {
     snare: Arc<Snare>,
+    /// The maximum number of jobs we will run at any one point. Note that this may not necessarily
+    /// be the same value as snare.config.maxjobs.
+    maxjobs: usize,
     /// The running jobs, with `0..num_running` entries.
     running: Vec<Option<Job>>,
     /// How many `Some` entries are there in `self.running`?
@@ -40,15 +43,16 @@ struct JobRunner {
 
 impl JobRunner {
     fn new(snare: Arc<Snare>) -> Result<Self, Box<dyn Error>> {
-        assert!(snare.config.maxjobs < std::usize::MAX);
-        let mut running = Vec::with_capacity(snare.config.maxjobs);
-        running.resize_with(snare.config.maxjobs, || None);
-        let mut pollfds = Vec::with_capacity(snare.config.maxjobs * 2 + 1);
-        pollfds.resize_with(snare.config.maxjobs * 2 + 1, || {
-            PollFd::new(-1, PollFlags::empty())
-        });
+        // If the unwrap() on the lock fails, the other thread has paniced.
+        let maxjobs = snare.config.lock().unwrap().maxjobs;
+        assert!(maxjobs < std::usize::MAX);
+        let mut running = Vec::with_capacity(maxjobs);
+        running.resize_with(maxjobs, || None);
+        let mut pollfds = Vec::with_capacity(maxjobs * 2 + 1);
+        pollfds.resize_with(maxjobs * 2 + 1, || PollFd::new(-1, PollFlags::empty()));
         Ok(JobRunner {
             snare,
+            maxjobs,
             running,
             num_running: 0,
             pollfds,
@@ -71,9 +75,7 @@ impl JobRunner {
             // able to run for temporary reasons, then wait a short amount of time and try again.
             // Notice that the second clause is a bit subtle: if there are jobs on the queue, but
             // we're all running the maximum number of jobs, then there's no point in waking up.
-            let timeout = if num_waiting > 0
-                || (check_queue && self.num_running < self.snare.config.maxjobs)
-            {
+            let timeout = if num_waiting > 0 || (check_queue && self.num_running < self.maxjobs) {
                 WAIT_TIMEOUT * 1000
             } else {
                 -1
@@ -83,7 +85,7 @@ impl JobRunner {
             // See if any of our active jobs have events. Knowing when a pipe is actually closed is
             // surprisingly hard. https://www.greenend.org.uk/rjk/tech/poll.html has an interesting
             // suggestion which we adapt slightly here.
-            for i in 0..self.snare.config.maxjobs {
+            for i in 0..self.maxjobs {
                 // stderr
                 if let Some(flags) = self.pollfds[i * 2].revents() {
                     if flags.contains(PollFlags::POLLIN) {
@@ -175,7 +177,7 @@ impl JobRunner {
             }
 
             // Has the HTTP server told us that it's put more jobs into the queue?
-            match self.pollfds[self.snare.config.maxjobs * 2].revents() {
+            match self.pollfds[self.maxjobs * 2].revents() {
                 Some(flags) if flags == PollFlags::POLLIN => {
                     check_queue = true;
                     // It's fine for us to drain the event pipe completely: we'll process all the
@@ -194,7 +196,7 @@ impl JobRunner {
             // it fully, or because the HTTP server has told us that it's put more jobs there.
             // However, it's only worth us checking the queue (which requires a lock) if there's
             // space for us to run further jobs.
-            if check_queue && self.num_running < self.snare.config.maxjobs {
+            if check_queue && self.num_running < self.maxjobs {
                 check_queue = !self.try_pop_queue();
             }
         }
@@ -211,7 +213,7 @@ impl JobRunner {
             let pjob = self.snare.queue.lock().unwrap().pop();
             match pjob {
                 Some(qj) => {
-                    if self.num_running == self.snare.config.maxjobs {
+                    if self.num_running == self.maxjobs {
                         self.snare.queue.lock().unwrap().push_front(qj);
                         return false;
                     }
@@ -339,8 +341,7 @@ impl JobRunner {
             self.pollfds[i * 2] = PollFd::new(stderr_fd, PollFlags::POLLIN);
             self.pollfds[i * 2 + 1] = PollFd::new(stdout_fd, PollFlags::POLLIN);
         }
-        self.pollfds[self.snare.config.maxjobs * 2] =
-            PollFd::new(self.snare.event_read_fd, PollFlags::POLLIN);
+        self.pollfds[self.maxjobs * 2] = PollFd::new(self.snare.event_read_fd, PollFlags::POLLIN);
     }
 
     /// If the user has specified an email address, send the contents of
