@@ -63,8 +63,8 @@ async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>,
         return Ok(res);
     }
 
-    // We now check thatthe per-repo program to run while making sure that we aren't tricked into
-    // executing a file outside of the repos dir.
+    // We now check that there is a per-repo program for this repository and that we haven't been
+    // tricked into searching for a file outside of the repos dir.
     let mut p = PathBuf::new();
     p.push(&snare.config.github.reposdir);
     p.push(owner);
