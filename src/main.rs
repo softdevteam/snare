@@ -36,7 +36,7 @@ pub(crate) struct Snare {
 
 /// Exit with a fatal error.
 fn fatal(msg: &str) -> ! {
-    debug_assert!(msg.chars().last() != Some('.'));
+    debug_assert!(msg.ends_with('.'));
     eprintln!("{}.", msg);
     process::exit(1);
 }
