@@ -1,25 +1,63 @@
-%start Options
+%start TopLevelOptions
 %avoid_insert "INT" "STRING"
 
 %%
 
-Options -> Result<Vec<GenericOption<StorageT>>, ()>:
-    Options Option { flattenr($1, $2) }
+TopLevelOptions -> Result<Vec<TopLevelOption<StorageT>>, ()>:
+    TopLevelOptions TopLevelOption { flattenr($1, $2) }
   | { Ok(vec![]) }
   ;
 
-Option -> Result<GenericOption<StorageT>, ()>:
-    "EMAIL" "=" "STRING" { Ok(GenericOption::Email(map_err($3)?)) }
-  | "MAXJOBS" "=" "INT" { Ok(GenericOption::MaxJobs(map_err($3)?)) }
-  | "PORT" "=" "INT" { Ok(GenericOption::Port(map_err($3)?)) }
-  | "REPOSDIR" "=" "STRING" { Ok(GenericOption::ReposDir(map_err($3)?)) }
-  | "SECRET" "=" "STRING" { Ok(GenericOption::Secret(map_err($3)?)) }
+TopLevelOption -> Result<TopLevelOption<StorageT>, ()>:
+    "GITHUB" "{" OptionsOrMatches "}" {
+        let (options, matches) = $3?;
+        Ok(TopLevelOption::GitHub($1.unwrap_or_else(|x| x), options, matches))
+    }
+  | "MAXJOBS" "=" "INT" { Ok(TopLevelOption::MaxJobs(map_err($3)?)) }
+  | "PORT" "=" "INT" { Ok(TopLevelOption::Port(map_err($3)?)) }
+  ;
+
+OptionsOrMatches -> Result<(Vec<ProviderOption<StorageT>>, Vec<Match<StorageT>>), ()>:
+    OptionsOrMatches ProviderOption {
+        let (mut options, matches) = $1?;
+        options.push($2?);
+        Ok((options, matches))
+    }
+  | OptionsOrMatches Match {
+        let (options, mut matches) = $1?;
+        matches.push($2?);
+        Ok((options, matches))
+    }
+  | { Ok((vec![], vec![])) }
+  ;
+
+ProviderOption -> Result<ProviderOption<StorageT>, ()>:
+    "REPOSDIR" "=" "STRING" { Ok(ProviderOption::ReposDir(map_err($3)?)) }
+  ;
+
+Matches -> Result<Vec<Match<StorageT>>, ()>:
+    Matches Match { flattenr($1, $2) }
+  | { Ok(vec![]) }
+  ;
+
+Match -> Result<Match<StorageT>, ()>:
+    "MATCH" "STRING" "{" PerRepoOptions "}" { Ok(Match{re: map_err($2)?, options: $4? }) }
+  ;
+
+PerRepoOptions -> Result<Vec<PerRepoOption<StorageT>>, ()>:
+    PerRepoOptions PerRepoOption { flattenr($1, $2) }
+  | { Ok(vec![]) }
+  ;
+
+PerRepoOption -> Result<PerRepoOption<StorageT>, ()>:
+    "EMAIL" "=" "STRING" { Ok(PerRepoOption::Email(map_err($3)?)) }
+  | "SECRET" "=" "STRING" { Ok(PerRepoOption::Secret(map_err($3)?)) }
   ;
 
 %%
 use lrpar::Lexeme;
 
-use crate::config::GenericOption;
+use crate::config_ast::{TopLevelOption, Match, PerRepoOption, ProviderOption};
 
 type StorageT = u8;
 

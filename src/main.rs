@@ -7,6 +7,7 @@
 //! `jobrunner` to use a single interface for listen for completed jobs as well as new jobs.
 
 mod config;
+mod config_ast;
 mod httpserver;
 mod jobrunner;
 mod queue;
