@@ -3,12 +3,14 @@ use std::{
     time::Instant,
 };
 
+use crate::config::RepoConfig;
+
 pub(crate) struct QueueJob {
     pub path: String,
     pub req_time: Instant,
     pub event_type: String,
     pub json_str: String,
-    pub email: Option<String>,
+    pub rconf: RepoConfig,
 }
 
 impl QueueJob {
@@ -17,14 +19,14 @@ impl QueueJob {
         req_time: Instant,
         event_type: String,
         json_str: String,
-        email: Option<String>,
+        rconf: RepoConfig,
     ) -> Self {
         QueueJob {
             path,
             req_time,
             event_type,
             json_str,
-            email,
+            rconf,
         }
     }
 }

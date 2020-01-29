@@ -7,9 +7,10 @@ use hyper::service::{make_service_fn, service_fn};
 use hyper::{self, body::Bytes, server::conn::AddrIncoming, Body, Request, Response, StatusCode};
 use json;
 use percent_encoding::percent_decode;
+use secstr::SecStr;
 use sha1::Sha1;
 
-use crate::{config::RepoConfig, fatal_err, queue::QueueJob, Snare};
+use crate::{fatal_err, queue::QueueJob, Snare};
 
 pub(crate) async fn serve(server: hyper::server::Builder<AddrIncoming>, snare: Arc<Snare>) {
     let make_svc = make_service_fn(|_| {
@@ -56,9 +57,9 @@ async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>,
         }
     };
 
-    let rconf = snare.config.github.repoconfig(&owner, &repo);
+    let (rconf, secret) = snare.config.github.repoconfig(&owner, &repo);
 
-    if !authenticate(&rconf, sig, pl) {
+    if !authenticate(secret, sig, pl) {
         *res.status_mut() = StatusCode::UNAUTHORIZED;
         return Ok(res);
     }
@@ -75,13 +76,7 @@ async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>,
                 // We can tolerate the `unwrap` call below because if it fails it means that
                 // something has gone so seriously wrong in the other thread that there's no
                 // likelihood that we can recover.
-                let qj = QueueJob::new(
-                    s.to_owned(),
-                    req_time,
-                    event_type,
-                    json_str,
-                    rconf.email.map(|x| x.to_owned()),
-                );
+                let qj = QueueJob::new(s.to_owned(), req_time, event_type, json_str, rconf);
                 (*snare.queue.lock().unwrap()).push_back(qj);
                 *res.status_mut() = StatusCode::OK;
                 // If the write fails, it almost certainly means that the pipe is full i.e. the
@@ -114,8 +109,8 @@ fn get_hub_sig(req: &Request<Body>) -> Result<String, ()> {
 
 /// Authenticate this request and if successful return `true` (where "success" also includes "the
 /// user didn't specify a secret for this repository").
-fn authenticate(rconf: &RepoConfig, sig: String, pl: Bytes) -> bool {
-    if let Some(sec) = rconf.secret {
+fn authenticate(secret: Option<&SecStr>, sig: String, pl: Bytes) -> bool {
+    if let Some(ref sec) = secret {
         // We've already checked the key length when creating the config, so the unwrap() is safe.
         let mut mac = Hmac::<Sha1>::new_varkey(sec.unsecure()).unwrap();
         mac.input(&*pl);

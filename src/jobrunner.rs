@@ -17,7 +17,7 @@ use nix::{
 use tempfile::{tempdir, tempfile, NamedTempFile, TempDir};
 use whoami::{hostname, username};
 
-use crate::{queue::QueueJob, Snare};
+use crate::{config::RepoConfig, queue::QueueJob, Snare};
 
 /// The size of the temporary read buffer in bytes. Should be >= PIPE_BUF for performance reasons.
 const READBUF: usize = 8 * 1024;
@@ -162,7 +162,7 @@ impl JobRunner {
                     if exited {
                         if !exited_success {
                             let job = &self.running[i].as_ref().unwrap();
-                            self.sendemail(&job.email, &job.stderrout_file);
+                            self.sendemail(&job.rconf.email, &job.stderrout_file);
                         }
                         remove_file(&self.running[i].as_ref().unwrap().json_path).ok();
                         self.running[i] = None;
@@ -307,7 +307,7 @@ impl JobRunner {
                             stderrout_file,
                             stderr_hup: false,
                             stdout_hup: false,
-                            email: qj.email,
+                            rconf: qj.rconf,
                         });
                     }
                 }
@@ -392,8 +392,8 @@ struct Job {
     stderr_hup: bool,
     /// Has the child process's stdout been closed?
     stdout_hup: bool,
-    /// The email address to send to if this job fails.
-    email: Option<String>,
+    /// The `RepoConfig` for this job.
+    rconf: RepoConfig,
 }
 
 fn set_nonblock(fd: RawFd) -> Result<(), Box<dyn Error>> {

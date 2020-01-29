@@ -219,21 +219,26 @@ impl GitHub {
         GitHub { reposdir, matches }
     }
 
-    pub fn repoconfig<'a>(&'a self, owner: &str, repo: &str) -> RepoConfig<'a> {
+    /// Return a `RepoConfig` for `owner/repo`. Note that if the user reloads the config later,
+    /// then a given repository might have two or more `RepoConfig`s with internal settings, so
+    /// they should not be mixed. We return the repository's secret as a separate member as it is
+    /// relatively costly to clone, and we also prefer not to duplicate it repeatedly throughout
+    /// the heap.
+    pub fn repoconfig<'a>(&'a self, owner: &str, repo: &str) -> (RepoConfig, Option<&'a SecStr>) {
         let s = format!("{}/{}", owner, repo);
         let mut email = None;
         let mut secret = None;
         for m in &self.matches {
             if m.re.is_match(&s) {
                 if let Some(ref e) = m.email {
-                    email = Some(e.as_str());
+                    email = Some(e.clone());
                 }
                 if let Some(ref s) = m.secret {
                     secret = Some(s);
                 }
             }
         }
-        RepoConfig { email, secret }
+        (RepoConfig { email }, secret)
     }
 }
 
@@ -309,7 +314,6 @@ fn search_snare_conf() -> Option<PathBuf> {
 }
 
 /// The configuration for a given repository.
-pub struct RepoConfig<'a> {
-    pub email: Option<&'a str>,
-    pub secret: Option<&'a SecStr>,
+pub struct RepoConfig {
+    pub email: Option<String>,
 }
