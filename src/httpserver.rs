@@ -85,10 +85,8 @@ async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>,
                 (*snare.queue.lock().unwrap()).push_back(qj);
                 *res.status_mut() = StatusCode::OK;
                 // If the write fails, it almost certainly means that the pipe is full i.e. the
-                // runner thread will be notified anyway. Just in case something else very odd
-                // happened, the runner thread periodically checks the queue "just in case", so
-                // even if this write does fail, the job will be picked up in the not too distant
-                // future. In either case, a failed write doesn't stop progress being made.
+                // runner thread will be notified anyway. If something else happens to have gone
+                // wrong, then we (and the OS) are probably in deep trouble anyway...
                 nix::unistd::write(snare.event_write_fd, &[0]).ok();
                 return Ok(res);
             }
