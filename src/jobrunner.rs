@@ -1,4 +1,5 @@
 use std::{
+    convert::TryInto,
     error::Error,
     fs::{self, remove_file, File},
     io::{Read, Seek, SeekFrom, Write},
@@ -7,12 +8,16 @@ use std::{
     process::{self, Child, Command},
     sync::Arc,
     thread,
+    time::{Duration, Instant},
 };
 
 use lettre::{sendmail::SendmailTransport, EmailAddress, Envelope, SendableEmail, Transport};
+use libc::c_int;
 use nix::{
     fcntl::{fcntl, FcntlArg, OFlag},
     poll::{poll, PollFd, PollFlags},
+    sys::signal::{kill, Signal},
+    unistd::Pid,
 };
 use tempfile::{tempdir, tempfile, NamedTempFile, TempDir};
 use whoami::{hostname, username};
@@ -70,16 +75,33 @@ impl JobRunner {
         let mut num_waiting = 0;
         // A scratch buffer used to read from files.
         let mut buf = Box::new([0; READBUF]);
+        // The earliest finish_by time of any running process (i.e. the process that will timeout
+        // the soonest).
+        let mut next_finish_by: Option<Instant> = None;
         loop {
             // If we're waiting for jobs to die or if there are jobs on the queue we haven't been
             // able to run for temporary reasons, then wait a short amount of time and try again.
             // Notice that the second clause is a bit subtle: if there are jobs on the queue, but
             // we're all running the maximum number of jobs, then there's no point in waking up.
-            let timeout = if num_waiting > 0 || (check_queue && self.num_running < self.maxjobs) {
+            let mut timeout = if num_waiting > 0 || (check_queue && self.num_running < self.maxjobs)
+            {
                 WAIT_TIMEOUT * 1000
             } else {
                 -1
             };
+            // If any processes will exceed their timeout then, if that's shorter than the above
+            // timeout, only wait for enough time to pass before we need to send them SIGTERM.
+            if let Some(fby) = next_finish_by {
+                let fby_timeout = fby.saturating_duration_since(Instant::now());
+                if timeout == -1
+                    || fby_timeout < Duration::from_millis(timeout.try_into().unwrap_or(0))
+                {
+                    timeout = fby_timeout
+                        .as_millis()
+                        .try_into()
+                        .unwrap_or(c_int::max_value());
+                }
+            }
             poll(&mut self.pollfds, timeout).ok();
 
             self.check_for_sighup();
@@ -140,10 +162,26 @@ impl JobRunner {
                 }
             }
 
-            // If there are jobs whose stderr/stdout have closed, keep waiting on them until they
-            // exit.
+            // Iterate over the running jobs and:
+            //   * If any jobs have exceeded their timeout, send them SIGTERM.
+            //   * If there are jobs whose stderr/stdout have closed, keep waiting on them until
+            //     they exit.
             num_waiting = 0;
+            next_finish_by = None;
             for i in 0..self.running.len() {
+                if let Some(Job {
+                    finish_by,
+                    ref child,
+                    ..
+                }) = self.running[i]
+                {
+                    if finish_by <= Instant::now() {
+                        kill(Pid::from_raw(child.id() as i32), Signal::SIGTERM).ok();
+                    } else if next_finish_by.is_none() || Some(finish_by) < next_finish_by {
+                        next_finish_by = Some(finish_by);
+                    }
+                }
+
                 if let Some(Job {
                     stderr_hup: true,
                     stdout_hup: true,
@@ -304,7 +342,19 @@ impl JobRunner {
                             return Err(None);
                         }
 
+                        // This unwrap() is, in theory, unsafe because we could exceed the timeout
+                        // duration. However, a quick back-of-the-envelope calculation suggests
+                        // that, assuming `Instant` is a `u64`, this could only happen with an
+                        // uptime of over 500,000,000 years. This seems adequately long that I'm
+                        // happy to take the risk on the unwrap().
+                        let finish_by = Instant::now()
+                            .checked_add(Duration::from_millis(
+                                qj.rconf.timeout.saturating_mul(1000),
+                            ))
+                            .unwrap();
+
                         return Ok(Job {
+                            finish_by,
                             child,
                             _tempdir: tempdir,
                             json_path,
@@ -413,6 +463,9 @@ impl JobRunner {
 }
 
 struct Job {
+    /// What time must this Job have completed by? If it exceeds this time, it will be terminated.
+    finish_by: Instant,
+    /// The child process itself.
     child: Child,
     /// This TempDir will be dropped, and its file system contents removed, when this Job is dropped.
     _tempdir: TempDir,

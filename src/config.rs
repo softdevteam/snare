@@ -16,6 +16,8 @@ use crate::{config_ast, fatal};
 
 type StorageT = u8;
 
+const DEFAULT_TIMEOUT: u64 = 60 * 60; // 1 hour
+
 lrlex_mod!("config.l");
 lrpar_mod!("config.y");
 
@@ -200,6 +202,7 @@ impl GitHub {
             };
             let mut email = None;
             let mut secret = None;
+            let mut timeout = None;
             for opt in m.options {
                 match opt {
                     config_ast::PerRepoOption::Email(lexeme) => {
@@ -241,9 +244,34 @@ impl GitHub {
                         }
                         secret = Some(SecStr::from(sec_str));
                     }
+                    config_ast::PerRepoOption::Timeout(lexeme) => {
+                        if timeout.is_some() {
+                            return Err(error_at_lexeme(
+                                lexer,
+                                lexeme,
+                                "Mustn't specify 'timeout' more than once",
+                            ));
+                        }
+                        let t = match lexer.lexeme_str(&lexeme).parse() {
+                            Ok(t) => t,
+                            Err(e) => {
+                                return Err(error_at_lexeme(
+                                    lexer,
+                                    lexeme,
+                                    &format!("Invalid timeout: {}", e),
+                                ))
+                            }
+                        };
+                        timeout = Some(t);
+                    }
                 }
             }
-            matches.push(Match { re, email, secret });
+            matches.push(Match {
+                re,
+                email,
+                secret,
+                timeout,
+            });
         }
 
         let reposdir = reposdir
@@ -261,6 +289,7 @@ impl GitHub {
         let s = format!("{}/{}", owner, repo);
         let mut email = None;
         let mut secret = None;
+        let mut timeout = None;
         for m in &self.matches {
             if m.re.is_match(&s) {
                 if let Some(ref e) = m.email {
@@ -269,9 +298,19 @@ impl GitHub {
                 if let Some(ref s) = m.secret {
                     secret = Some(s);
                 }
+                if let Some(t) = m.timeout {
+                    timeout = Some(t)
+                }
             }
         }
-        (RepoConfig { email }, secret)
+        // Since we know that Matches::default() provides a default timeout, this unwrap() is safe.
+        (
+            RepoConfig {
+                email,
+                timeout: timeout.unwrap(),
+            },
+            secret,
+        )
     }
 }
 
@@ -282,6 +321,8 @@ pub struct Match {
     email: Option<String>,
     /// The GitHub secret used to validate requests.
     secret: Option<SecStr>,
+    /// The maximum time to allow a command to run for before it is terminated (in seconds).
+    timeout: Option<u64>,
 }
 
 impl Default for Match {
@@ -291,6 +332,7 @@ impl Default for Match {
             re,
             email: None,
             secret: None,
+            timeout: Some(DEFAULT_TIMEOUT),
         }
     }
 }
@@ -311,4 +353,5 @@ fn error_at_lexeme(lexer: &dyn Lexer<StorageT>, lexeme: Lexeme<StorageT>, msg: &
 /// The configuration for a given repository.
 pub struct RepoConfig {
     pub email: Option<String>,
+    pub timeout: u64,
 }

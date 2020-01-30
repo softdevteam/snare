@@ -52,6 +52,7 @@ PerRepoOptions -> Result<Vec<PerRepoOption<StorageT>>, ()>:
 PerRepoOption -> Result<PerRepoOption<StorageT>, ()>:
     "EMAIL" "=" "STRING" { Ok(PerRepoOption::Email(map_err($3)?)) }
   | "SECRET" "=" "STRING" { Ok(PerRepoOption::Secret(map_err($3)?)) }
+  | "TIMEOUT" "=" "INT" { Ok(PerRepoOption::Timeout(map_err($3)?)) }
   ;
 
 %%
