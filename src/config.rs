@@ -30,7 +30,7 @@ pub struct Config {
 
 impl Config {
     /// Create a `Config` from `path`.
-    pub fn from_path(conf_path: PathBuf) -> Self {
+    pub fn from_path(conf_path: &PathBuf) -> Self {
         let input = match read_to_string(conf_path) {
             Ok(s) => s,
             Err(e) => fatal_err("Can't read configuration file", e),

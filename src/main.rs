@@ -21,12 +21,16 @@ use std::{
     os::unix::io::RawFd,
     path::{Path, PathBuf},
     process,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
 };
 
 use getopts::Options;
 use hyper::Server;
 use nix::{fcntl::OFlag, unistd::pipe2};
+use signal_hook;
 use users::{get_current_uid, get_user_by_uid, os::unix::UserExt};
 
 use config::Config;
@@ -37,10 +41,34 @@ use queue::Queue;
 const SNARE_CONF_SEARCH: &[&str] = &["/etc/snare.conf", "~/.snare.conf"];
 
 pub(crate) struct Snare {
+    /// The location of snare.conf; this file will be reloaded if SIGHUP is received.
+    conf_path: PathBuf,
+    /// The current configuration: note that this can change at any point due to SIGHUP.
     config: Mutex<Config>,
+    /// The current queue of incoming jobs.
     queue: Mutex<Queue>,
+    /// The read end of the pipe used by the httpserver and the SIGHUP handler to wake up the job
+    /// runner thread.
     event_read_fd: RawFd,
+    /// The write end of the pipe used by the httpserver and the SIGHUP handler to wake up the job
+    /// runner thread.
     event_write_fd: RawFd,
+    /// Has a SIGHUP event occurred? If so, the jobrunner will process it, and set this to false in
+    /// case future SIGHUP events are detected.
+    sighup_occurred: Arc<AtomicBool>,
+}
+
+impl Snare {
+    /// Check to see if we've received a SIGHUP since the last check. If so, we will reload the
+    /// config file. **Note that because snare has multiple threads, the config file can change at
+    /// any arbitrary point, not just after calling this function.**
+    fn check_for_hup(&self) {
+        if self.sighup_occurred.load(Ordering::Release) {
+            let config = Config::from_path(&self.conf_path);
+            *self.config.lock().unwrap() = config;
+            self.sighup_occurred.store(false, Ordering::Release);
+        }
+    }
 }
 
 /// Exit with a fatal error.
@@ -110,7 +138,7 @@ pub async fn main() {
         Some(p) => PathBuf::from(&p),
         None => search_snare_conf().unwrap_or_else(|| fatal("Can't find snare.conf")),
     };
-    let config = Config::from_path(conf_path);
+    let config = Config::from_path(&conf_path);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
     let server = match Server::try_bind(&addr) {
@@ -119,11 +147,27 @@ pub async fn main() {
     };
 
     let (event_read_fd, event_write_fd) = pipe2(OFlag::O_NONBLOCK).unwrap();
+    let sighup_occurred = Arc::new(AtomicBool::new(false));
+    {
+        let sighup_occurred = Arc::clone(&sighup_occurred);
+        if let Err(e) = unsafe {
+            signal_hook::register(signal_hook::SIGHUP, move || {
+                // All functions called in this function must be signal safe. See signal(3).
+                sighup_occurred.store(true, Ordering::Relaxed);
+                nix::unistd::write(event_write_fd, &[0]).ok();
+            })
+        } {
+            fatal_err("Can't install SIGHUP handler", e);
+        }
+    }
+
     let snare = Arc::new(Snare {
+        conf_path,
         config: Mutex::new(config),
         queue: Mutex::new(Queue::new()),
         event_read_fd,
         event_write_fd,
+        sighup_occurred,
     });
 
     match jobrunner::attend(Arc::clone(&snare)) {

@@ -82,6 +82,11 @@ impl JobRunner {
             };
             poll(&mut self.pollfds, timeout).ok();
 
+            // The SIGHUP listener writes to the event FD if SIGHUP has been received, so it's
+            // possible that the reason we've been woken up is that the SIGHUP event needs to be
+            // processed.
+            self.snare.check_for_hup();
+
             // See if any of our active jobs have events. Knowing when a pipe is actually closed is
             // surprisingly hard. https://www.greenend.org.uk/rjk/tech/poll.html has an interesting
             // suggestion which we adapt slightly here.
