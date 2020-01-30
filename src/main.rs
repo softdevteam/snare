@@ -44,7 +44,7 @@ pub(crate) struct Snare {
     /// The location of snare.conf; this file will be reloaded if SIGHUP is received.
     conf_path: PathBuf,
     /// The current configuration: note that this can change at any point due to SIGHUP.
-    config: Mutex<Config>,
+    conf: Mutex<Config>,
     /// The current queue of incoming jobs.
     queue: Mutex<Queue>,
     /// The read end of the pipe used by the httpserver and the SIGHUP handler to wake up the job
@@ -59,13 +59,13 @@ pub(crate) struct Snare {
 }
 
 impl Snare {
-    /// Check to see if we've received a SIGHUP since the last check. If so, we will reload the
-    /// config file. **Note that because snare has multiple threads, the config file can change at
-    /// any arbitrary point, not just after calling this function.**
+    /// Check to see if we've received a SIGHUP since the last check. If so, we will try reloading
+    /// the snare.conf file specified when we started. **Note that another thread may have called
+    /// this function and caused the config to have changed.**
     fn check_for_sighup(&self) {
         if self.sighup_occurred.load(Ordering::Relaxed) {
             match Config::from_path(&self.conf_path) {
-                Ok(config) => *self.config.lock().unwrap() = config,
+                Ok(conf) => *self.conf.lock().unwrap() = conf,
                 Err(msg) => eprintln!("{}", msg),
             }
             self.sighup_occurred.store(false, Ordering::Relaxed);
@@ -143,9 +143,9 @@ pub async fn main() {
         Some(p) => PathBuf::from(&p),
         None => search_snare_conf().unwrap_or_else(|| fatal("Can't find snare.conf")),
     };
-    let config = Config::from_path(&conf_path).unwrap_or_else(|m| fatal(&m));
+    let conf = Config::from_path(&conf_path).unwrap_or_else(|m| fatal(&m));
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
+    let addr = SocketAddr::from(([0, 0, 0, 0], conf.port));
     let server = match Server::try_bind(&addr) {
         Ok(s) => s,
         Err(e) => fatal_err("Couldn't bind to port", e),
@@ -168,7 +168,7 @@ pub async fn main() {
 
     let snare = Arc::new(Snare {
         conf_path,
-        config: Mutex::new(config),
+        conf: Mutex::new(conf),
         queue: Mutex::new(Queue::new()),
         event_read_fd,
         event_write_fd,

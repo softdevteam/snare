@@ -28,7 +28,7 @@ const WAIT_TIMEOUT: i32 = 1;
 struct JobRunner {
     snare: Arc<Snare>,
     /// The maximum number of jobs we will run at any one point. Note that this may not necessarily
-    /// be the same value as snare.config.maxjobs.
+    /// be the same value as snare.conf.maxjobs.
     maxjobs: usize,
     /// The running jobs, with `0..num_running` entries.
     running: Vec<Option<Job>>,
@@ -44,8 +44,8 @@ struct JobRunner {
 impl JobRunner {
     fn new(snare: Arc<Snare>) -> Result<Self, Box<dyn Error>> {
         // If the unwrap() on the lock fails, the other thread has paniced.
-        let maxjobs = snare.config.lock().unwrap().maxjobs;
-        assert!(maxjobs < std::usize::MAX);
+        let maxjobs = snare.conf.lock().unwrap().maxjobs;
+        assert!(maxjobs <= (std::usize::MAX - 1) / 2);
         let mut running = Vec::with_capacity(maxjobs);
         running.resize_with(maxjobs, || None);
         let mut pollfds = Vec::with_capacity(maxjobs * 2 + 1);

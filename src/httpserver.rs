@@ -58,8 +58,8 @@ async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>,
     };
 
     // If the unwrap() on the lock fails, the other thread has paniced.
-    let config = snare.config.lock().unwrap();
-    let (rconf, secret) = config.github.repoconfig(&owner, &repo);
+    let conf = snare.conf.lock().unwrap();
+    let (rconf, secret) = conf.github.repoconfig(&owner, &repo);
 
     if !authenticate(secret, sig, pl) {
         *res.status_mut() = StatusCode::UNAUTHORIZED;
@@ -69,12 +69,12 @@ async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>,
     // We now check that there is a per-repo program for this repository and that we haven't been
     // tricked into searching for a file outside of the repos dir.
     let mut p = PathBuf::new();
-    p.push(&config.github.reposdir);
+    p.push(&conf.github.reposdir);
     p.push(owner);
     p.push(repo);
     if let Ok(p) = p.canonicalize() {
         if let Some(s) = p.to_str() {
-            if s.starts_with(&config.github.reposdir) {
+            if s.starts_with(&conf.github.reposdir) {
                 // We can tolerate the `unwrap` call below because if it fails it means that
                 // something has gone so seriously wrong in the other thread that there's no
                 // likelihood that we can recover.
