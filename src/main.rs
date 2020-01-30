@@ -63,18 +63,23 @@ impl Snare {
     /// config file. **Note that because snare has multiple threads, the config file can change at
     /// any arbitrary point, not just after calling this function.**
     fn check_for_hup(&self) {
-        if self.sighup_occurred.load(Ordering::Release) {
-            let config = Config::from_path(&self.conf_path);
-            *self.config.lock().unwrap() = config;
-            self.sighup_occurred.store(false, Ordering::Release);
+        if self.sighup_occurred.load(Ordering::Relaxed) {
+            match Config::from_path(&self.conf_path) {
+                Ok(config) => *self.config.lock().unwrap() = config,
+                Err(msg) => eprintln!("{}", msg),
+            }
+            self.sighup_occurred.store(false, Ordering::Relaxed);
         }
     }
 }
 
 /// Exit with a fatal error.
 fn fatal(msg: &str) -> ! {
-    debug_assert!(msg.ends_with('.'));
-    eprintln!("{}.", msg);
+    if msg.ends_with('.') {
+        eprintln!("{}", msg);
+    } else {
+        eprintln!("{}.", msg);
+    }
     process::exit(1);
 }
 
@@ -138,7 +143,7 @@ pub async fn main() {
         Some(p) => PathBuf::from(&p),
         None => search_snare_conf().unwrap_or_else(|| fatal("Can't find snare.conf")),
     };
-    let config = Config::from_path(&conf_path);
+    let config = Config::from_path(&conf_path).unwrap_or_else(|m| fatal(&m));
 
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
     let server = match Server::try_bind(&addr) {
