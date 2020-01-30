@@ -24,8 +24,6 @@ pub(crate) async fn serve(server: hyper::server::Builder<AddrIncoming>, snare: A
 }
 
 async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>, Infallible> {
-    snare.check_for_hup();
-
     let mut res = Response::new(Body::empty());
     let req_time = Instant::now();
     let event_type = match req.headers().get("X-GitHub-Event") {

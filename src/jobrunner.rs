@@ -82,10 +82,7 @@ impl JobRunner {
             };
             poll(&mut self.pollfds, timeout).ok();
 
-            // The SIGHUP listener writes to the event FD if SIGHUP has been received, so it's
-            // possible that the reason we've been woken up is that the SIGHUP event needs to be
-            // processed.
-            self.snare.check_for_hup();
+            self.check_for_sighup();
 
             // See if any of our active jobs have events. Knowing when a pipe is actually closed is
             // surprisingly hard. https://www.greenend.org.uk/rjk/tech/poll.html has an interesting
@@ -347,6 +344,35 @@ impl JobRunner {
             self.pollfds[i * 2 + 1] = PollFd::new(stdout_fd, PollFlags::POLLIN);
         }
         self.pollfds[self.maxjobs * 2] = PollFd::new(self.snare.event_read_fd, PollFlags::POLLIN);
+    }
+
+    /// If SIGHUP has been received, reload the config, and update self.maxjobs if possible.
+    fn check_for_sighup(&mut self) {
+        self.snare.check_for_sighup();
+
+        let new_maxjobs = self.snare.conf.lock().unwrap().maxjobs;
+        if new_maxjobs > self.maxjobs {
+            // The user now wants to allow more jobs which we can do simply and safely -- even if
+            // there are jobs running -- by extending self.running and self.pollfds with blank
+            // entries.
+            self.running.resize_with(new_maxjobs, || None);
+            self.pollfds
+                .resize_with(new_maxjobs * 2 + 1, || PollFd::new(-1, PollFlags::empty()));
+            self.maxjobs = new_maxjobs;
+            self.update_pollfds();
+        } else if new_maxjobs < self.maxjobs && self.num_running == 0 {
+            // The user wants to allow fewer jobs. This is somewhat hard because we may be running
+            // jobs, and possibly more than the user now wants us to be running. We could be clever
+            // and compact self.running and self.pollfds, though that may still not drop the number
+            // of jobs down enough. We currently do the laziest thing: we wait until there are no
+            // running jobs and then truncate self.running and self.pollfds. If there are always
+            // running jobs then this means we will never reduce the number of maximum possible
+            // jobs.
+            self.running.truncate(new_maxjobs);
+            self.pollfds.truncate(new_maxjobs * 2 + 1);
+            self.maxjobs = new_maxjobs;
+            self.update_pollfds();
+        }
     }
 
     /// If the user has specified an email address, send the contents of
