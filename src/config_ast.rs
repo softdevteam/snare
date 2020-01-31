@@ -22,4 +22,5 @@ pub struct Match<StorageT> {
 pub enum PerRepoOption<StorageT> {
     Email(Lexeme<StorageT>),
     Secret(Lexeme<StorageT>),
+    Timeout(Lexeme<StorageT>),
 }

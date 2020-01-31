@@ -57,6 +57,18 @@ A `match` block supports the following options:
  * `secret = "<secret>"` is an optional GitHub secret which guarantees that
    hooks are coming from your GitHub repository and not a malfeasant. Although
    this is optional, we *highly* recommend setting it in all cases.
+ * `timeout = <timeout>` optionally specifies the elapsed time in seconds that
+   a process can run before being sent SIGTERM.
+
+`match` blocks are evaluated in order from top to bottom with each successful
+match overriding previous settings.  There is a default `match` block placed
+before any user `match` blocks:
+
+```
+match ".*" {
+  timeout = 3600
+}
+```
 
 The minimal configuration file is thus:
 
@@ -68,10 +80,9 @@ github {
 }
 ```
 
-`match` blocks are evaluated in order from top to bottom with each successful
-match overriding previous settings. This allows users to specify defaults which
-are only overridden for specific repositories. For example, for the following
-configuration file:
+The top-to-bottom evaluation of `match` blocks allow users to specify defaults
+which are only overridden for specific repositories. For example, for the
+following configuration file:
 
 ```
 port = <port>
@@ -80,7 +91,7 @@ github {
   reposdir = "<path>"
   match ".*" {
     email = "abc@def.com"
-    secret = "very"
+    secret = "sec"
   }
   match "a/b" {
     email = "ghi@jkl.com"
@@ -88,8 +99,16 @@ github {
 }
 ```
 
-the repository `c/d` will have errors sent to `abc@def.com` but `a/b` will have
-errors sent to `ghi@jkl.com`. Note that both repositories share the same GitHub secret `very`.
+then the repositories will have the following settings:
+
+  * `a/b`:
+    * `timeout = 3600`
+    * `email = "ghi@jkl.com"`
+    * `secret = "sec"`
+  * `c/d`:
+    * `timeout = 3600`
+    * `email = "abc@def.com"`
+    * `secret = "sec"`
 
 
 ## Per-repo programs
