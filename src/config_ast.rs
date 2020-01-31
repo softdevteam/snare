@@ -21,6 +21,12 @@ pub struct Match<StorageT> {
 
 pub enum PerRepoOption<StorageT> {
     Email(Lexeme<StorageT>),
+    Queue(Lexeme<StorageT>, QueueKind),
     Secret(Lexeme<StorageT>),
     Timeout(Lexeme<StorageT>),
+}
+
+pub enum QueueKind {
+    Parallel,
+    Sequential,
 }

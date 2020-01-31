@@ -13,6 +13,7 @@ port "PORT"
 queue "QUEUE"
 reposdir "REPOSDIR"
 secret "SECRET"
+sequential "SEQUENTIAL"
 timeout "TIMEOUT"
 //.*?$ ;
 [ \t\n\r]* ;

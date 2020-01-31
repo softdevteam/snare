@@ -251,7 +251,15 @@ impl JobRunner {
                 if self.num_running == self.maxjobs && !queue.is_empty() {
                     return false;
                 }
-                queue.pop()
+                queue.pop(|path| {
+                    self.running.iter().any(|jobslot| {
+                        if let Some(job) = jobslot {
+                            path == job.path
+                        } else {
+                            false
+                        }
+                    })
+                })
             };
             match pjob {
                 Some(qj) => {
@@ -279,7 +287,12 @@ impl JobRunner {
                         }
                     }
                 }
-                None => return true,
+                None => {
+                    // We weren't able to pop any jobs from the queue, but that doesn't mean that
+                    // the queue is necessarily empty: there may be `QueueKind::Sequential` jobs in
+                    // it which can't be popped until others with the same path have completed.
+                    return self.snare.queue.lock().unwrap().is_empty();
+                }
             }
         }
     }
@@ -310,7 +323,7 @@ impl JobRunner {
             if let Ok(stderrout_file) = tempfile() {
                 if set_nonblock(stderrout_file.as_raw_fd()).is_ok() {
                     if let Some(json_path_str) = json_path.to_str() {
-                        let child = match Command::new(qj.path)
+                        let child = match Command::new(qj.path.clone())
                             .arg(qj.event_type)
                             .arg(json_path_str)
                             .current_dir(tempdir.path())
@@ -353,6 +366,7 @@ impl JobRunner {
                             .unwrap();
 
                         return Ok(Job {
+                            path: qj.path,
                             finish_by,
                             child,
                             _tempdir: tempdir,
@@ -462,6 +476,8 @@ impl JobRunner {
 }
 
 struct Job {
+    /// The path of the script we are running.
+    path: String,
     /// What time must this Job have completed by? If it exceeds this time, it will be terminated.
     finish_by: Instant,
     /// The child process itself.

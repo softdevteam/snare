@@ -201,6 +201,7 @@ impl GitHub {
                 }
             };
             let mut email = None;
+            let mut queuekind = None;
             let mut secret = None;
             let mut timeout = None;
             for opt in m.options {
@@ -216,6 +217,19 @@ impl GitHub {
                         let email_str = lexer.lexeme_str(&lexeme);
                         let email_str = &email_str[1..email_str.len() - 1];
                         email = Some(email_str.to_owned());
+                    }
+                    config_ast::PerRepoOption::Queue(lexeme, qkind) => {
+                        if queuekind.is_some() {
+                            return Err(error_at_lexeme(
+                                lexer,
+                                lexeme,
+                                "Mustn't specify 'queue' more than once",
+                            ));
+                        }
+                        queuekind = Some(match qkind {
+                            config_ast::QueueKind::Parallel => QueueKind::Parallel,
+                            config_ast::QueueKind::Sequential => QueueKind::Sequential,
+                        });
                     }
                     config_ast::PerRepoOption::Secret(lexeme) => {
                         if secret.is_some() {
@@ -269,6 +283,7 @@ impl GitHub {
             matches.push(Match {
                 re,
                 email,
+                queuekind,
                 secret,
                 timeout,
             });
@@ -288,12 +303,16 @@ impl GitHub {
     pub fn repoconfig<'a>(&'a self, owner: &str, repo: &str) -> (RepoConfig, Option<&'a SecStr>) {
         let s = format!("{}/{}", owner, repo);
         let mut email = None;
+        let mut queuekind = None;
         let mut secret = None;
         let mut timeout = None;
         for m in &self.matches {
             if m.re.is_match(&s) {
                 if let Some(ref e) = m.email {
                     email = Some(e.clone());
+                }
+                if let Some(q) = m.queuekind {
+                    queuekind = Some(q);
                 }
                 if let Some(ref s) = m.secret {
                     secret = Some(s);
@@ -307,6 +326,7 @@ impl GitHub {
         (
             RepoConfig {
                 email,
+                queuekind: queuekind.unwrap(),
                 timeout: timeout.unwrap(),
             },
             secret,
@@ -319,6 +339,8 @@ pub struct Match {
     re: Regex,
     /// An optional email address to send errors to.
     email: Option<String>,
+    /// The queue kind.
+    queuekind: Option<QueueKind>,
     /// The GitHub secret used to validate requests.
     secret: Option<SecStr>,
     /// The maximum time to allow a command to run for before it is terminated (in seconds).
@@ -331,6 +353,7 @@ impl Default for Match {
         Match {
             re,
             email: None,
+            queuekind: Some(QueueKind::Sequential),
             secret: None,
             timeout: Some(DEFAULT_TIMEOUT),
         }
@@ -353,5 +376,12 @@ fn error_at_lexeme(lexer: &dyn Lexer<StorageT>, lexeme: Lexeme<StorageT>, msg: &
 /// The configuration for a given repository.
 pub struct RepoConfig {
     pub email: Option<String>,
+    pub queuekind: QueueKind,
     pub timeout: u64,
+}
+
+#[derive(Clone, Copy)]
+pub enum QueueKind {
+    Parallel,
+    Sequential,
 }
