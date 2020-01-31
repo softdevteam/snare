@@ -54,8 +54,13 @@ A `match` block supports the following options:
    errors running per-repo programs will be sent (warning: full stderr/stdout
    will be sent, so consider carefully whether these have sensitive information
    or not).
- * `queue = <parallel|sequential>` optionally specifies what to do when
+ * `queue = <evict|parallel|sequential>` optionally specifies what to do when
    multiple requests for the same repository are queued at once:
+     * `evict`: only run one job for this repository at a time. Additional jobs
+       will stay on the queue: if a new job comes in for that repository, it
+       evicts any previously queued jobs for that repository. In other words,
+       for this repository there can be at most one running job and one queued
+       job at any point.
      * `parallel`: run as many jobs for this repository in parallel as
        possible.
      * `sequential`: only run one job for this repository at a time. Additional

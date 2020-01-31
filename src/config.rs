@@ -227,6 +227,7 @@ impl GitHub {
                             ));
                         }
                         queuekind = Some(match qkind {
+                            config_ast::QueueKind::Evict => QueueKind::Evict,
                             config_ast::QueueKind::Parallel => QueueKind::Parallel,
                             config_ast::QueueKind::Sequential => QueueKind::Sequential,
                         });
@@ -382,6 +383,7 @@ pub struct RepoConfig {
 
 #[derive(Clone, Copy)]
 pub enum QueueKind {
+    Evict,
     Parallel,
     Sequential,
 }

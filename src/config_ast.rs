@@ -27,6 +27,7 @@ pub enum PerRepoOption<StorageT> {
 }
 
 pub enum QueueKind {
+    Evict,
     Parallel,
     Sequential,
 }

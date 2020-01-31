@@ -60,7 +60,8 @@ PerRepoOption -> Result<PerRepoOption<StorageT>, ()>:
   ;
 
 QueueKind -> Result<(Lexeme<StorageT>, QueueKind), ()>:
-    "PARALLEL" { Ok((map_err($1)?, QueueKind::Parallel)) }
+    "EVICT" { Ok((map_err($1)?, QueueKind::Evict)) }
+  | "PARALLEL" { Ok((map_err($1)?, QueueKind::Parallel)) }
   | "SEQUENTIAL" { Ok((map_err($1)?, QueueKind::Sequential)) }
   ;
 

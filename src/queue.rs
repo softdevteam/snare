@@ -52,14 +52,21 @@ impl Queue {
 
     /// For the per-repo program at `path`, push a new request.
     pub fn push_back(&mut self, qj: QueueJob) {
-        self.q
-            .entry(qj.path.clone())
-            .or_insert_with(VecDeque::new)
-            .push_back(qj);
+        let mut entry = self.q.entry(qj.path.clone());
+
+        match qj.rconf.queuekind {
+            QueueKind::Evict => {
+                entry = entry.and_modify(|v| v.clear());
+            }
+            QueueKind::Parallel | QueueKind::Sequential => (),
+        }
+        entry.or_insert_with(VecDeque::new).push_back(qj);
     }
 
     /// For the per-repo program at `path`, push an old request that has had to be requeued due to
-    /// a (hopefully) temporary error.
+    /// a (hopefully) temporary error. In order that jobs are not unnecessarily pushed on the queue
+    /// (which could happen with the `Evict` queue kind), the lock on `self` should be held between
+    /// calls to `pop` and `push_front`.
     pub fn push_front(&mut self, qj: QueueJob) {
         self.q
             .entry(qj.path.clone())
@@ -87,7 +94,7 @@ impl Queue {
                 }
                 match qj.rconf.queuekind {
                     QueueKind::Parallel => (),
-                    QueueKind::Sequential => {
+                    QueueKind::Evict | QueueKind::Sequential => {
                         if running(&qj.path) {
                             continue;
                         }

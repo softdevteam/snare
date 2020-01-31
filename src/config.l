@@ -5,6 +5,7 @@
 \{ "{"
 \} "}"
 email "EMAIL"
+evict "EVICT"
 github "GITHUB"
 match "MATCH"
 maxjobs "MAXJOBS"

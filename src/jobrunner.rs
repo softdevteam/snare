@@ -245,22 +245,21 @@ impl JobRunner {
     /// Try to pop all jobs on the queue: returns `true` if it was able to do so successfully or
     /// `false` otherwise.
     fn try_pop_queue(&mut self) -> bool {
+        let snare = Arc::clone(&self.snare);
+        let mut queue = snare.queue.lock().unwrap();
         loop {
-            let pjob = {
-                let mut queue = self.snare.queue.lock().unwrap();
-                if self.num_running == self.maxjobs && !queue.is_empty() {
-                    return false;
-                }
-                queue.pop(|path| {
-                    self.running.iter().any(|jobslot| {
-                        if let Some(job) = jobslot {
-                            path == job.path
-                        } else {
-                            false
-                        }
-                    })
+            if self.num_running == self.maxjobs && !queue.is_empty() {
+                return false;
+            }
+            let pjob = queue.pop(|path| {
+                self.running.iter().any(|jobslot| {
+                    if let Some(job) = jobslot {
+                        path == job.path
+                    } else {
+                        false
+                    }
                 })
-            };
+            });
             match pjob {
                 Some(qj) => {
                     debug_assert!(self.num_running < self.maxjobs);
@@ -275,7 +274,7 @@ impl JobRunner {
                         }
                         Err(Some(qj)) => {
                             // The job couldn't be run for temporary reasons: we'll retry later.
-                            self.snare.queue.lock().unwrap().push_front(qj);
+                            queue.push_front(qj);
                             return false;
                         }
                         Err(None) => {
@@ -291,7 +290,7 @@ impl JobRunner {
                     // We weren't able to pop any jobs from the queue, but that doesn't mean that
                     // the queue is necessarily empty: there may be `QueueKind::Sequential` jobs in
                     // it which can't be popped until others with the same path have completed.
-                    return self.snare.queue.lock().unwrap().is_empty();
+                    return queue.is_empty();
                 }
             }
         }
