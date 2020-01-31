@@ -40,6 +40,16 @@ impl Queue {
         Queue { q: HashMap::new() }
     }
 
+    /// Are there any jobs in the queue?
+    pub fn is_empty(&self) -> bool {
+        for v in self.q.values() {
+            if !v.is_empty() {
+                return false;
+            }
+        }
+        true
+    }
+
     /// For the per-repo program at `path`, push a new request.
     pub fn push_back(&mut self, qj: QueueJob) {
         self.q

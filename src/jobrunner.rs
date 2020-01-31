@@ -245,18 +245,17 @@ impl JobRunner {
     /// Try to pop all jobs on the queue: returns `true` if it was able to do so successfully or
     /// `false` otherwise.
     fn try_pop_queue(&mut self) -> bool {
-        // Note that the various `unwrap` calls to `queue.lock()` are acceptable because if if it
-        // fails it means that something has gone so seriously wrong in the other thread that
-        // there's no likelihood that we can recover.
-
         loop {
-            let pjob = self.snare.queue.lock().unwrap().pop();
+            let pjob = {
+                let mut queue = self.snare.queue.lock().unwrap();
+                if self.num_running == self.maxjobs && !queue.is_empty() {
+                    return false;
+                }
+                queue.pop()
+            };
             match pjob {
                 Some(qj) => {
-                    if self.num_running == self.maxjobs {
-                        self.snare.queue.lock().unwrap().push_front(qj);
-                        return false;
-                    }
+                    debug_assert!(self.num_running < self.maxjobs);
                     match self.try_job(qj) {
                         Ok(j) => {
                             // The unwrap is safe since we've already checked that there's room to
