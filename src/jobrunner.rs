@@ -17,7 +17,7 @@ use nix::{
 use tempfile::{tempdir, tempfile, NamedTempFile, TempDir};
 use whoami::{hostname, username};
 
-use crate::{queue::QueueJob, Snare};
+use crate::{config::RepoConfig, queue::QueueJob, Snare};
 
 /// The size of the temporary read buffer in bytes. Should be >= PIPE_BUF for performance reasons.
 const READBUF: usize = 8 * 1024;
@@ -27,6 +27,9 @@ const WAIT_TIMEOUT: i32 = 1;
 
 struct JobRunner {
     snare: Arc<Snare>,
+    /// The maximum number of jobs we will run at any one point. Note that this may not necessarily
+    /// be the same value as snare.conf.maxjobs.
+    maxjobs: usize,
     /// The running jobs, with `0..num_running` entries.
     running: Vec<Option<Job>>,
     /// How many `Some` entries are there in `self.running`?
@@ -40,15 +43,16 @@ struct JobRunner {
 
 impl JobRunner {
     fn new(snare: Arc<Snare>) -> Result<Self, Box<dyn Error>> {
-        assert!(snare.config.maxjobs < std::usize::MAX);
-        let mut running = Vec::with_capacity(snare.config.maxjobs);
-        running.resize_with(snare.config.maxjobs, || None);
-        let mut pollfds = Vec::with_capacity(snare.config.maxjobs * 2 + 1);
-        pollfds.resize_with(snare.config.maxjobs * 2 + 1, || {
-            PollFd::new(-1, PollFlags::empty())
-        });
+        // If the unwrap() on the lock fails, the other thread has paniced.
+        let maxjobs = snare.conf.lock().unwrap().maxjobs;
+        assert!(maxjobs <= (std::usize::MAX - 1) / 2);
+        let mut running = Vec::with_capacity(maxjobs);
+        running.resize_with(maxjobs, || None);
+        let mut pollfds = Vec::with_capacity(maxjobs * 2 + 1);
+        pollfds.resize_with(maxjobs * 2 + 1, || PollFd::new(-1, PollFlags::empty()));
         Ok(JobRunner {
             snare,
+            maxjobs,
             running,
             num_running: 0,
             pollfds,
@@ -71,19 +75,19 @@ impl JobRunner {
             // able to run for temporary reasons, then wait a short amount of time and try again.
             // Notice that the second clause is a bit subtle: if there are jobs on the queue, but
             // we're all running the maximum number of jobs, then there's no point in waking up.
-            let timeout = if num_waiting > 0
-                || (check_queue && self.num_running < self.snare.config.maxjobs)
-            {
+            let timeout = if num_waiting > 0 || (check_queue && self.num_running < self.maxjobs) {
                 WAIT_TIMEOUT * 1000
             } else {
                 -1
             };
             poll(&mut self.pollfds, timeout).ok();
 
+            self.check_for_sighup();
+
             // See if any of our active jobs have events. Knowing when a pipe is actually closed is
             // surprisingly hard. https://www.greenend.org.uk/rjk/tech/poll.html has an interesting
             // suggestion which we adapt slightly here.
-            for i in 0..self.snare.config.maxjobs {
+            for i in 0..self.maxjobs {
                 // stderr
                 if let Some(flags) = self.pollfds[i * 2].revents() {
                     if flags.contains(PollFlags::POLLIN) {
@@ -162,7 +166,7 @@ impl JobRunner {
                     if exited {
                         if !exited_success {
                             let job = &self.running[i].as_ref().unwrap();
-                            self.sendemail(&job.email, &job.stderrout_file);
+                            self.sendemail(&job.rconf.email, &job.stderrout_file);
                         }
                         remove_file(&self.running[i].as_ref().unwrap().json_path).ok();
                         self.running[i] = None;
@@ -175,7 +179,7 @@ impl JobRunner {
             }
 
             // Has the HTTP server told us that it's put more jobs into the queue?
-            match self.pollfds[self.snare.config.maxjobs * 2].revents() {
+            match self.pollfds[self.maxjobs * 2].revents() {
                 Some(flags) if flags == PollFlags::POLLIN => {
                     check_queue = true;
                     // It's fine for us to drain the event pipe completely: we'll process all the
@@ -194,7 +198,7 @@ impl JobRunner {
             // it fully, or because the HTTP server has told us that it's put more jobs there.
             // However, it's only worth us checking the queue (which requires a lock) if there's
             // space for us to run further jobs.
-            if check_queue && self.num_running < self.snare.config.maxjobs {
+            if check_queue && self.num_running < self.maxjobs {
                 check_queue = !self.try_pop_queue();
             }
         }
@@ -211,7 +215,7 @@ impl JobRunner {
             let pjob = self.snare.queue.lock().unwrap().pop();
             match pjob {
                 Some(qj) => {
-                    if self.num_running == self.snare.config.maxjobs {
+                    if self.num_running == self.maxjobs {
                         self.snare.queue.lock().unwrap().push_front(qj);
                         return false;
                     }
@@ -307,7 +311,7 @@ impl JobRunner {
                             stderrout_file,
                             stderr_hup: false,
                             stdout_hup: false,
-                            email: qj.email,
+                            rconf: qj.rconf,
                         });
                     }
                 }
@@ -339,8 +343,36 @@ impl JobRunner {
             self.pollfds[i * 2] = PollFd::new(stderr_fd, PollFlags::POLLIN);
             self.pollfds[i * 2 + 1] = PollFd::new(stdout_fd, PollFlags::POLLIN);
         }
-        self.pollfds[self.snare.config.maxjobs * 2] =
-            PollFd::new(self.snare.event_read_fd, PollFlags::POLLIN);
+        self.pollfds[self.maxjobs * 2] = PollFd::new(self.snare.event_read_fd, PollFlags::POLLIN);
+    }
+
+    /// If SIGHUP has been received, reload the config, and update self.maxjobs if possible.
+    fn check_for_sighup(&mut self) {
+        self.snare.check_for_sighup();
+
+        let new_maxjobs = self.snare.conf.lock().unwrap().maxjobs;
+        if new_maxjobs > self.maxjobs {
+            // The user now wants to allow more jobs which we can do simply and safely -- even if
+            // there are jobs running -- by extending self.running and self.pollfds with blank
+            // entries.
+            self.running.resize_with(new_maxjobs, || None);
+            self.pollfds
+                .resize_with(new_maxjobs * 2 + 1, || PollFd::new(-1, PollFlags::empty()));
+            self.maxjobs = new_maxjobs;
+            self.update_pollfds();
+        } else if new_maxjobs < self.maxjobs && self.num_running == 0 {
+            // The user wants to allow fewer jobs. This is somewhat hard because we may be running
+            // jobs, and possibly more than the user now wants us to be running. We could be clever
+            // and compact self.running and self.pollfds, though that may still not drop the number
+            // of jobs down enough. We currently do the laziest thing: we wait until there are no
+            // running jobs and then truncate self.running and self.pollfds. If there are always
+            // running jobs then this means we will never reduce the number of maximum possible
+            // jobs.
+            self.running.truncate(new_maxjobs);
+            self.pollfds.truncate(new_maxjobs * 2 + 1);
+            self.maxjobs = new_maxjobs;
+            self.update_pollfds();
+        }
     }
 
     /// If the user has specified an email address, send the contents of
@@ -392,8 +424,8 @@ struct Job {
     stderr_hup: bool,
     /// Has the child process's stdout been closed?
     stdout_hup: bool,
-    /// The email address to send to if this job fails.
-    email: Option<String>,
+    /// The `RepoConfig` for this job.
+    rconf: RepoConfig,
 }
 
 fn set_nonblock(fd: RawFd) -> Result<(), Box<dyn Error>> {

@@ -14,5 +14,5 @@ queue "QUEUE"
 reposdir "REPOSDIR"
 secret "SECRET"
 timeout "TIMEOUT"
-//.*? ;
+//.*?$ ;
 [ \t\n\r]* ;
