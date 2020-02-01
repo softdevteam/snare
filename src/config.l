@@ -16,5 +16,6 @@ reposdir "REPOSDIR"
 secret "SECRET"
 sequential "SEQUENTIAL"
 timeout "TIMEOUT"
+user "USER"
 //.*?$ ;
 [ \t\n\r]* ;

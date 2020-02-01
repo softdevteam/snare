@@ -29,6 +29,17 @@ The configuration file supports the following top-level options:
    number of jobs to run in parallel. Defaults to the number of CPUs in the
    machine.
  * `port = <int>` is a mandatory port number to listen on (e.g. 4567).
+ * `user = "<user-name>"` is an optional username that `snare` will try and
+   change into after it has bound to a network port. Note that `snare` will
+   refuse to run as `root` unless the `user` option is specified. As part of
+   changing user, `snare`:
+     * changes its uid, euid, suid to `user-name`'s GID.
+     * changes its gid, egid, sgid to `user-name`'s primary GID.
+     * change its CWD to `user-name`'s home directory.
+     * sets the `$HOME` environment variable to `user-name`'s home directory.
+     * sets the `$USER` environment variable to `user-name`
+   Note that *all* other environment variables are passed through to child
+   processes unchanged.
  * `github { ... }` specifies GitHub specific options.
 
 The `github` block supports the following options:

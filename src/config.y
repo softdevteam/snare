@@ -15,6 +15,7 @@ TopLevelOption -> Result<TopLevelOption<StorageT>, ()>:
     }
   | "MAXJOBS" "=" "INT" { Ok(TopLevelOption::MaxJobs(map_err($3)?)) }
   | "PORT" "=" "INT" { Ok(TopLevelOption::Port(map_err($3)?)) }
+  | "USER" "=" "STRING" { Ok(TopLevelOption::User(map_err($3)?)) }
   ;
 
 OptionsOrMatches -> Result<(Vec<ProviderOption<StorageT>>, Vec<Match<StorageT>>), ()>:

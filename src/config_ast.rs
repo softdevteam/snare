@@ -8,6 +8,7 @@ pub enum TopLevelOption<StorageT> {
     ),
     MaxJobs(Lexeme<StorageT>),
     Port(Lexeme<StorageT>),
+    User(Lexeme<StorageT>),
 }
 
 pub enum ProviderOption<StorageT> {

@@ -28,6 +28,8 @@ pub struct Config {
     pub port: u16,
     /// The GitHub block.
     pub github: GitHub,
+    /// The Unix user to change to after snare has bound itself to a network port.
+    pub user: Option<String>,
 }
 
 impl Config {
@@ -50,8 +52,9 @@ impl Config {
             return Err(msgs.join("\n"));
         }
         let mut github = None;
-        let mut port = None;
         let mut maxjobs = None;
+        let mut port = None;
+        let mut user = None;
         match astopt {
             Some(Ok(opts)) => {
                 for opt in opts {
@@ -119,6 +122,18 @@ impl Config {
                                 }
                             });
                         }
+                        config_ast::TopLevelOption::User(lexeme) => {
+                            if user.is_some() {
+                                return Err(error_at_lexeme(
+                                    &lexer,
+                                    lexeme,
+                                    "Mustn't specify 'user' more than once",
+                                ));
+                            }
+                            let user_str = lexer.lexeme_str(&lexeme);
+                            let user_str = &user_str[1..user_str.len() - 1];
+                            user = Some(user_str.to_owned());
+                        }
                     }
                 }
             }
@@ -138,8 +153,9 @@ impl Config {
 
         Ok(Config {
             maxjobs: maxjobs.unwrap(),
-            port: port.unwrap(),
             github: github.unwrap(),
+            port: port.unwrap(),
+            user: user,
         })
     }
 }
