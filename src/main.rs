@@ -38,7 +38,7 @@ use queue::Queue;
 
 /// Default locations to look for `snare.conf`: `~/` will be automatically converted to the current
 /// user's home directory.
-const SNARE_CONF_SEARCH: &[&str] = &["/etc/snare.conf", "~/.snare.conf"];
+const SNARE_CONF_SEARCH: &[&str] = &["~/.snare.conf", "/etc/snare.conf"];
 
 pub(crate) struct Snare {
     /// The location of snare.conf; this file will be reloaded if SIGHUP is received.
