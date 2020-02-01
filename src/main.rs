@@ -17,7 +17,6 @@ use std::{
     error::Error,
     fmt::Display,
     io::{stderr, Write},
-    net::SocketAddr,
     os::unix::io::RawFd,
     path::{Path, PathBuf},
     process,
@@ -188,10 +187,9 @@ pub async fn main() {
     };
     let conf = Config::from_path(&conf_path).unwrap_or_else(|m| fatal(&m));
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], conf.port));
-    let server = match Server::try_bind(&addr) {
+    let server = match Server::try_bind(&conf.listen) {
         Ok(s) => s,
-        Err(e) => fatal_err("Couldn't bind to port", e),
+        Err(e) => fatal_err("Couldn't bind to address", e),
     };
 
     change_user(&conf);

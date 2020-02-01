@@ -1,7 +1,9 @@
 use std::{
     fs::{canonicalize, read_to_string},
+    net::SocketAddr,
     path::PathBuf,
     process,
+    str::FromStr,
 };
 
 use crypto_mac::{InvalidKeyLength, Mac};
@@ -22,10 +24,10 @@ lrlex_mod!("config.l");
 lrpar_mod!("config.y");
 
 pub struct Config {
+    /// The IP address/port on which to listen.
+    pub listen: SocketAddr,
     /// The maximum number of parallel jobs to run.
     pub maxjobs: usize,
-    /// The port to listen on.
-    pub port: u16,
     /// The GitHub block.
     pub github: GitHub,
     /// The Unix user to change to after snare has bound itself to a network port.
@@ -52,8 +54,8 @@ impl Config {
             return Err(msgs.join("\n"));
         }
         let mut github = None;
+        let mut listen = None;
         let mut maxjobs = None;
-        let mut port = None;
         let mut user = None;
         match astopt {
             Some(Ok(opts)) => {
@@ -68,6 +70,27 @@ impl Config {
                                 ));
                             }
                             github = Some(GitHub::parse(&lexer, options, matches)?);
+                        }
+                        config_ast::TopLevelOption::Listen(lexeme) => {
+                            if listen.is_some() {
+                                return Err(error_at_lexeme(
+                                    &lexer,
+                                    lexeme,
+                                    "Mustn't specify 'listen' more than once",
+                                ));
+                            }
+                            let listen_str = lexer.lexeme_str(&lexeme);
+                            let listen_str = &listen_str[1..listen_str.len() - 1];
+                            match SocketAddr::from_str(listen_str) {
+                                Ok(l) => listen = Some(l),
+                                Err(e) => {
+                                    return Err(error_at_lexeme(
+                                        &lexer,
+                                        lexeme,
+                                        &format!("Invalid listen address '{}': {}", listen_str, e),
+                                    ));
+                                }
+                            }
                         }
                         config_ast::TopLevelOption::MaxJobs(lexeme) => {
                             if maxjobs.is_some() {
@@ -102,26 +125,6 @@ impl Config {
                                 }
                             }
                         }
-                        config_ast::TopLevelOption::Port(lexeme) => {
-                            if port.is_some() {
-                                return Err(error_at_lexeme(
-                                    &lexer,
-                                    lexeme,
-                                    "Mustn't specify 'port' more than once",
-                                ));
-                            }
-                            let port_str = lexer.lexeme_str(&lexeme);
-                            port = Some(match port_str.parse() {
-                                Ok(p) => p,
-                                Err(_) => {
-                                    return Err(error_at_lexeme(
-                                        &lexer,
-                                        lexeme,
-                                        &format!("Invalid port '{}'", port_str),
-                                    ))
-                                }
-                            });
-                        }
                         config_ast::TopLevelOption::User(lexeme) => {
                             if user.is_some() {
                                 return Err(error_at_lexeme(
@@ -142,8 +145,8 @@ impl Config {
         if maxjobs.is_none() {
             maxjobs = Some(num_cpus::get());
         }
-        if port.is_none() {
-            return Err("A port must be specified".to_owned());
+        if listen.is_none() {
+            return Err("A 'listen' address must be specified".to_owned());
         }
         if github.is_none() {
             return Err(
@@ -152,9 +155,9 @@ impl Config {
         }
 
         Ok(Config {
+            listen: listen.unwrap(),
             maxjobs: maxjobs.unwrap(),
             github: github.unwrap(),
-            port: port.unwrap(),
             user: user,
         })
     }

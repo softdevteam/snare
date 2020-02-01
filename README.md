@@ -25,10 +25,15 @@ where:
 
 The configuration file supports the following top-level options:
 
+ * `listen = "<address>"` is a mandatory address and port number to listen on.
+   The format of `address` is either:
+     * IPv4: `x.x.x.x:port` e.g. `0.0.0.0:8765` will listen on port 8765 for
+       all IPv4 addresses.
+     * IPv6: "[x:x:x]:port` e.g. `[::]:8765` will listen on port 8764 for all
+       IPv4 and IPv6 addresses
  * `maxjobs = <int>` is an (optional) non-zero integer specifying the maximum
    number of jobs to run in parallel. Defaults to the number of CPUs in the
    machine.
- * `port = <int>` is a mandatory port number to listen on (e.g. 4567).
  * `user = "<user-name>"` is an optional username that `snare` will try and
    change into after it has bound to a network port. Note that `snare` will
    refuse to run as `root` unless the `user` option is specified. As part of
@@ -96,7 +101,7 @@ match ".*" {
 The minimal recommended configuration file is thus:
 
 ```
-port = <port>
+listen = "<address>:<port>"
 
 github {
   reposdir = "<path>"

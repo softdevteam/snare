@@ -13,8 +13,8 @@ TopLevelOption -> Result<TopLevelOption<StorageT>, ()>:
         let (options, matches) = $3?;
         Ok(TopLevelOption::GitHub($1.unwrap_or_else(|x| x), options, matches))
     }
+  | "LISTEN" "=" "STRING" { Ok(TopLevelOption::Listen(map_err($3)?)) }
   | "MAXJOBS" "=" "INT" { Ok(TopLevelOption::MaxJobs(map_err($3)?)) }
-  | "PORT" "=" "INT" { Ok(TopLevelOption::Port(map_err($3)?)) }
   | "USER" "=" "STRING" { Ok(TopLevelOption::User(map_err($3)?)) }
   ;
 
