@@ -13,8 +13,9 @@ mod jobrunner;
 mod queue;
 
 use std::{
-    env::{self, set_current_dir},
+    env::{self, current_exe, set_current_dir},
     error::Error,
+    ffi::CString,
     fmt::Display,
     io::{stderr, Write},
     os::unix::io::RawFd,
@@ -28,6 +29,7 @@ use std::{
 
 use getopts::Options;
 use hyper::Server;
+use libc::{c_char, openlog, syslog, LOG_CONS, LOG_CRIT, LOG_DAEMON, LOG_ERR};
 use nix::{
     fcntl::OFlag,
     unistd::{daemon, pipe2, setresgid, setresuid, Gid, Uid},
@@ -44,6 +46,8 @@ use queue::Queue;
 const SNARE_CONF_SEARCH: &[&str] = &["~/.snare.conf", "/etc/snare.conf"];
 
 pub(crate) struct Snare {
+    /// Are we currently running as a daemon?
+    daemonised: bool,
     /// The location of snare.conf; this file will be reloaded if SIGHUP is received.
     conf_path: PathBuf,
     /// The current configuration: note that this can change at any point due to SIGHUP.
@@ -67,17 +71,66 @@ impl Snare {
     /// this function and caused the config to have changed.**
     fn check_for_sighup(&self) {
         if self.sighup_occurred.load(Ordering::Relaxed) {
-            let daemonise = self.conf.lock().unwrap().daemonise;
-            match Config::from_path(&self.conf_path, daemonise) {
+            match Config::from_path(&self.conf_path) {
                 Ok(conf) => *self.conf.lock().unwrap() = conf,
-                Err(msg) => eprintln!("{}", msg),
+                Err(msg) => self.error(&msg),
             }
             self.sighup_occurred.store(false, Ordering::Relaxed);
         }
     }
+
+    /// Log `msg` as an error.
+    ///
+    /// # Panics
+    ///
+    /// If `msg` contains a `NUL` byte.
+    fn error(&self, msg: &str) {
+        if self.daemonised {
+            unsafe {
+                syslog(
+                    LOG_ERR,
+                    CString::new("%s").unwrap().as_ptr(),
+                    CString::new(msg).unwrap().as_ptr(),
+                );
+            }
+        } else {
+            eprintln!("{}\n", msg);
+        }
+    }
+
+    /// Log `msg` as a fatal error and then exit(1).
+    ///
+    /// # Panics
+    ///
+    /// If `msg` contains a `NUL` byte.
+    fn fatal(&self, msg: &str) -> ! {
+        if self.daemonised {
+            unsafe {
+                syslog(
+                    LOG_CRIT,
+                    CString::new("%s").unwrap().as_ptr(),
+                    CString::new(msg).unwrap().as_ptr(),
+                );
+            }
+        } else {
+            eprintln!("{}\n", msg);
+        }
+        process::exit(1);
+    }
+
+    /// Log `msg` as a fatal error, with extra information in the Rust [`Error`](::Error) `err` and
+    /// then exit(1).
+    ///
+    /// # Panics
+    ///
+    /// If `msg` contains a `NUL` byte.
+    fn fatal_err<E: Into<Box<dyn Error>> + Display>(&self, msg: &str, err: E) -> ! {
+        self.fatal(&format!("{}: {}", msg, err));
+    }
 }
 
-/// Exit with a fatal error.
+/// Exit with a fatal error. This function should only be called before the [`Snare`](::Snare)
+/// struct is created.
 fn fatal(msg: &str) -> ! {
     if msg.ends_with('.') {
         eprintln!("{}", msg);
@@ -188,7 +241,7 @@ pub fn main() {
         Some(p) => PathBuf::from(&p),
         None => search_snare_conf().unwrap_or_else(|| fatal("Can't find snare.conf")),
     };
-    let conf = Config::from_path(&conf_path, daemonise).unwrap_or_else(|m| fatal(&m));
+    let conf = Config::from_path(&conf_path).unwrap_or_else(|m| fatal(&m));
 
     change_user(&conf);
 
@@ -196,6 +249,22 @@ pub fn main() {
         if let Err(e) = daemon(true, false) {
             fatal_err("Couldn't daemonise: {}", e);
         }
+    }
+    let progname = match current_exe() {
+        Ok(p) => p
+            .file_name()
+            .map(|x| x.to_str().unwrap_or("snare"))
+            .unwrap_or("snare")
+            .to_owned(),
+        Err(_) => "snare".to_owned(),
+    };
+    // openlog's first argument `ident` is incompletely specified, but in practise we have to assume that
+    // syslog merely stores a pointer to the string (i.e. it doesn't copy the string). We thus
+    // deliberately leak memory here in order that the pointer always points to valid memory.
+    let progname =
+        Box::into_raw(CString::new(progname).unwrap().into_boxed_c_str()) as *const c_char;
+    unsafe {
+        openlog(progname, LOG_CONS, LOG_DAEMON);
     }
 
     let (event_read_fd, event_write_fd) = pipe2(OFlag::O_NONBLOCK).unwrap();
@@ -214,6 +283,7 @@ pub fn main() {
     }
 
     let snare = Arc::new(Snare {
+        daemonised: daemonise,
         conf_path,
         conf: Mutex::new(conf),
         queue: Mutex::new(Queue::new()),
@@ -224,17 +294,17 @@ pub fn main() {
 
     match jobrunner::attend(Arc::clone(&snare)) {
         Ok(x) => x,
-        Err(e) => fatal_err("Couldn't start runner thread", e),
+        Err(e) => snare.fatal_err("Couldn't start runner thread", e),
     }
 
     let mut rt = match Runtime::new() {
         Ok(rt) => rt,
-        Err(e) => fatal_err("Couldn't start tokio runtime.", e),
+        Err(e) => snare.fatal_err("Couldn't start tokio runtime.", e),
     };
     rt.block_on(async {
         let server = match Server::try_bind(&snare.conf.lock().unwrap().listen) {
             Ok(s) => s,
-            Err(e) => fatal_err("Couldn't bind to address", e),
+            Err(e) => snare.fatal_err("Couldn't bind to address", e),
         };
 
         httpserver::serve(server, Arc::clone(&snare)).await;

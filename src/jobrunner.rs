@@ -333,7 +333,7 @@ impl JobRunner {
                         {
                             Ok(c) => c,
                             Err(e) => {
-                                self.warning(&format!("Can't spawn command: {:?}", e));
+                                self.snare.error(&format!("Can't spawn command: {:?}", e));
                                 return Err(None);
                             }
                         };
@@ -346,7 +346,7 @@ impl JobRunner {
                         if let Err(e) =
                             set_nonblock(stderr_fd).and_then(|_| set_nonblock(stdout_fd))
                         {
-                            self.warning(&format!(
+                            self.snare.error(&format!(
                                 "Can't set file descriptors to non-blocking: {:?}",
                                 e
                             ));
@@ -460,17 +460,14 @@ impl JobRunner {
 
                     let mut sender = SendmailTransport::new();
                     if let Err(e) = sender.send(email) {
-                        self.warning(&format!("Couldn't send email: {:?}", e));
+                        self.snare.error(&format!("Couldn't send email: {:?}", e));
                     }
                 }
-                Err(_) => self.warning(&format!("Invalid To: email address {}", toaddr)),
+                Err(_) => self
+                    .snare
+                    .error(&format!("Invalid To: email address {}", toaddr)),
             }
         }
-    }
-
-    /// Log a warning to the user. This might be to stderr, a log file, or email.
-    fn warning(&self, msg: &str) {
-        eprintln!("Warning: {}\n", msg);
     }
 }
 
