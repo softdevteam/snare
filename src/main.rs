@@ -33,6 +33,7 @@ use nix::{
     unistd::{pipe2, setresgid, setresuid, Gid, Uid},
 };
 use signal_hook;
+use tokio::runtime::Runtime;
 use users::{get_current_uid, get_user_by_name, get_user_by_uid, os::unix::UserExt};
 
 use config::Config;
@@ -168,8 +169,7 @@ fn usage(prog: &str) -> ! {
     process::exit(1)
 }
 
-#[tokio::main]
-pub async fn main() {
+pub fn main() {
     let args: Vec<String> = env::args().collect();
     let prog = &args[0];
     let matches = Options::new()
@@ -187,41 +187,47 @@ pub async fn main() {
     };
     let conf = Config::from_path(&conf_path).unwrap_or_else(|m| fatal(&m));
 
-    let server = match Server::try_bind(&conf.listen) {
-        Ok(s) => s,
-        Err(e) => fatal_err("Couldn't bind to address", e),
-    };
-
     change_user(&conf);
 
-    let (event_read_fd, event_write_fd) = pipe2(OFlag::O_NONBLOCK).unwrap();
-    let sighup_occurred = Arc::new(AtomicBool::new(false));
-    {
-        let sighup_occurred = Arc::clone(&sighup_occurred);
-        if let Err(e) = unsafe {
-            signal_hook::register(signal_hook::SIGHUP, move || {
-                // All functions called in this function must be signal safe. See signal(3).
-                sighup_occurred.store(true, Ordering::Relaxed);
-                nix::unistd::write(event_write_fd, &[0]).ok();
-            })
-        } {
-            fatal_err("Can't install SIGHUP handler", e);
+    let mut rt = match Runtime::new() {
+        Ok(rt) => rt,
+        Err(e) => fatal_err("Couldn't start tokio runtime.", e),
+    };
+    rt.block_on(async {
+        let server = match Server::try_bind(&conf.listen) {
+            Ok(s) => s,
+            Err(e) => fatal_err("Couldn't bind to address", e),
+        };
+
+        let (event_read_fd, event_write_fd) = pipe2(OFlag::O_NONBLOCK).unwrap();
+        let sighup_occurred = Arc::new(AtomicBool::new(false));
+        {
+            let sighup_occurred = Arc::clone(&sighup_occurred);
+            if let Err(e) = unsafe {
+                signal_hook::register(signal_hook::SIGHUP, move || {
+                    // All functions called in this function must be signal safe. See signal(3).
+                    sighup_occurred.store(true, Ordering::Relaxed);
+                    nix::unistd::write(event_write_fd, &[0]).ok();
+                })
+            } {
+                fatal_err("Can't install SIGHUP handler", e);
+            }
         }
-    }
 
-    let snare = Arc::new(Snare {
-        conf_path,
-        conf: Mutex::new(conf),
-        queue: Mutex::new(Queue::new()),
-        event_read_fd,
-        event_write_fd,
-        sighup_occurred,
+        let snare = Arc::new(Snare {
+            conf_path,
+            conf: Mutex::new(conf),
+            queue: Mutex::new(Queue::new()),
+            event_read_fd,
+            event_write_fd,
+            sighup_occurred,
+        });
+
+        match jobrunner::attend(Arc::clone(&snare)) {
+            Ok(x) => x,
+            Err(e) => fatal_err("Couldn't start runner thread", e),
+        }
+
+        httpserver::serve(server, Arc::clone(&snare)).await;
     });
-
-    match jobrunner::attend(Arc::clone(&snare)) {
-        Ok(x) => x,
-        Err(e) => fatal_err("Couldn't start runner thread", e),
-    }
-
-    httpserver::serve(server, Arc::clone(&snare)).await;
 }
