@@ -30,7 +30,7 @@ use getopts::Options;
 use hyper::Server;
 use nix::{
     fcntl::OFlag,
-    unistd::{pipe2, setresgid, setresuid, Gid, Uid},
+    unistd::{daemon, pipe2, setresgid, setresuid, Gid, Uid},
 };
 use signal_hook;
 use tokio::runtime::Runtime;
@@ -67,7 +67,8 @@ impl Snare {
     /// this function and caused the config to have changed.**
     fn check_for_sighup(&self) {
         if self.sighup_occurred.load(Ordering::Relaxed) {
-            match Config::from_path(&self.conf_path) {
+            let daemonise = self.conf.lock().unwrap().daemonise;
+            match Config::from_path(&self.conf_path, daemonise) {
                 Ok(conf) => *self.conf.lock().unwrap() = conf,
                 Err(msg) => eprintln!("{}", msg),
             }
@@ -160,12 +161,7 @@ fn usage(prog: &str) -> ! {
         .file_name()
         .map(|x| x.to_str().unwrap_or("snare"))
         .unwrap_or("snare");
-    writeln!(
-        &mut stderr(),
-        "Usage: {} [-e email] [-j <max-jobs>] -p <port> -r <repos-dir> -s <secrets-path>",
-        leaf
-    )
-    .ok();
+    writeln!(&mut stderr(), "Usage: {} [-c <config-path>] [-d]", leaf).ok();
     process::exit(1)
 }
 
@@ -173,7 +169,12 @@ pub fn main() {
     let args: Vec<String> = env::args().collect();
     let prog = &args[0];
     let matches = Options::new()
-        .optmulti("c", "config", "Path to snare.conf.", "<path>")
+        .optmulti("c", "config", "Path to snare.conf.", "<conf-path>")
+        .optflag(
+            "d",
+            "",
+            "Don't detach from the terminal and log errors to stderr.",
+        )
         .optflag("h", "help", "")
         .parse(&args[1..])
         .unwrap_or_else(|_| usage(prog));
@@ -181,13 +182,21 @@ pub fn main() {
         usage(prog);
     }
 
+    let daemonise = !matches.opt_present("d");
+
     let conf_path = match matches.opt_str("c") {
         Some(p) => PathBuf::from(&p),
         None => search_snare_conf().unwrap_or_else(|| fatal("Can't find snare.conf")),
     };
-    let conf = Config::from_path(&conf_path).unwrap_or_else(|m| fatal(&m));
+    let conf = Config::from_path(&conf_path, daemonise).unwrap_or_else(|m| fatal(&m));
 
     change_user(&conf);
+
+    if daemonise {
+        if let Err(e) = daemon(true, false) {
+            fatal_err("Couldn't daemonise: {}", e);
+        }
+    }
 
     let mut rt = match Runtime::new() {
         Ok(rt) => rt,

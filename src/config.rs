@@ -24,6 +24,8 @@ lrlex_mod!("config.l");
 lrpar_mod!("config.y");
 
 pub struct Config {
+    /// If true, then daemonise (i.e. disassociate from the terminal and log errors via syslog).
+    pub daemonise: bool,
     /// The IP address/port on which to listen.
     pub listen: SocketAddr,
     /// The maximum number of parallel jobs to run.
@@ -37,7 +39,7 @@ pub struct Config {
 impl Config {
     /// Create a `Config` from `path`, returning `Err(String)` (containing a human readable
     /// message) if it was unable to do so.
-    pub fn from_path(conf_path: &PathBuf) -> Result<Self, String> {
+    pub fn from_path(conf_path: &PathBuf, daemonise: bool) -> Result<Self, String> {
         let input = match read_to_string(conf_path) {
             Ok(s) => s,
             Err(e) => return Err(format!("Can't read {:?}: {}", conf_path, e)),
@@ -155,6 +157,7 @@ impl Config {
         }
 
         Ok(Config {
+            daemonise,
             listen: listen.unwrap(),
             maxjobs: maxjobs.unwrap(),
             github: github.unwrap(),
