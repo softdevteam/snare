@@ -10,7 +10,7 @@ use percent_encoding::percent_decode;
 use secstr::SecStr;
 use sha1::Sha1;
 
-use crate::{fatal_err, queue::QueueJob, Snare};
+use crate::{queue::QueueJob, Snare};
 
 pub(crate) async fn serve(server: hyper::server::Builder<AddrIncoming>, snare: Arc<Snare>) {
     let make_svc = make_service_fn(|_| {
@@ -19,7 +19,7 @@ pub(crate) async fn serve(server: hyper::server::Builder<AddrIncoming>, snare: A
     });
 
     if let Err(e) = server.serve(make_svc).await {
-        fatal_err("Couldn't start HTTP server", e);
+        snare.fatal_err("Couldn't start HTTP server", e);
     }
 }
 
