@@ -166,34 +166,40 @@ In order to work out precisely what event has happened, you will need to read
 [GitHub's webhooks documentation](https://developer.github.com/webhooks/).
 
 
-## Example repository program
+## Example per-repo program
 
-If we want to only execute commands when a pull request is merged, your
-per-repo program might start as follows:
+Users can write per-repo programs in whatever system/language they wish, so
+long as the matching file is marked as executable. The following simple example
+uses shell script to send a list of commits and diffs to the address specified
+in `$EMAIL` on each `push` event. It works for any public GitHub repository:
 
 ```sh
 #! /bin/sh
 
-# Ignore everything except pull request events
-if [ $1 != "pull_request" ]; then
+set -euf
+
+EMAIL="someone@something.com"
+
+if [ "$1" != "push" ]; then
     exit 0
 fi
 
-# Ignore pull request events that aren't closing a pull request
-if [ "X`jq .action $2 | tr -d '\"'`" != "Xclosed" ]; then
-    exit 0
-fi
+repo_fullname=`jq .repository.full_name "$2" | tr -d '\"'`
+repo_url=`jq .repository.html_url "$2" | tr -d '\"'`
+before_hash=`jq .before "$2" | tr -d '\"'`
+after_hash=`jq .after "$2" | tr -d '\"'`
 
-# Ignore close events unless they merged changes in
-if [ "X`jq .pull_request.merged $2 | tr -d '\"'`" != "Xtrue" ]; then
-    exit 0
-fi
+git clone "$repo_url" repo
+cd repo
+git log --reverse -p "$before_hash..$after_hash" | mail -s "Push to $repo_fullname" "$EMAIL"
 ```
 
 where [`jq`](https://stedolan.github.io/jq/) is a command-line JSON processor.
-If all three of those `if` statements succeed, then we know that a pull request
-has been merged. As this suggests, some GitHub events are slightly trickier
-than others to process and writing the above in shell script doesn't make it
-particularly easy to see the core logic. However, users can equally well write
-such programs in other languages if they prefer (i.e. you don't need to write
-shell scripts for this if you don't want to).
+Depending on your needs, you can make this type of script arbitrarily more
+complex and powerful (e.g. not cloning afresh on each pull).
+
+Note that this program is deliberately untrusting of external input: it is
+careful to quote all arguments obtained from JSON; and it uses a fixed
+directory name (`repo`) rather than use a file name from JSON that might
+include characters (e.g. `../..`) that would cause the script to leak data
+about other parts of the file system.
