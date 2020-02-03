@@ -31,7 +31,7 @@ The configuration file supports the following top-level options:
    The format of `address` is either:
      * IPv4: `x.x.x.x:port` e.g. `0.0.0.0:8765` will listen on port 8765 for
        all IPv4 addresses.
-     * IPv6: "[x:x:x]:port` e.g. `[::]:8765` will listen on port 8764 for all
+     * IPv6: `[x:x:x]:port` e.g. `[::]:8765` will listen on port 8764 for all
        IPv4 and IPv6 addresses
  * `maxjobs = <int>;` is an (optional) non-zero integer specifying the maximum
    number of jobs to run in parallel. Defaults to the number of CPUs in the
