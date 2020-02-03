@@ -54,6 +54,17 @@ A `match` block supports the following options:
    errors running per-repo programs will be sent (warning: full stderr/stdout
    will be sent, so consider carefully whether these have sensitive information
    or not).
+ * `queue = <evict|parallel|sequential>` optionally specifies what to do when
+   multiple requests for the same repository are queued at once:
+     * `evict`: only run one job for this repository at a time. Additional jobs
+       will stay on the queue: if a new job comes in for that repository, it
+       evicts any previously queued jobs for that repository. In other words,
+       for this repository there can be at most one running job and one queued
+       job at any point.
+     * `parallel`: run as many jobs for this repository in parallel as
+       possible.
+     * `sequential`: only run one job for this repository at a time. Additional
+       jobs will stay on the queue and be executed in FIFO order.
  * `secret = "<secret>"` is an optional GitHub secret which guarantees that
    hooks are coming from your GitHub repository and not a malfeasant. Although
    this is optional, we *highly* recommend setting it in all cases.
@@ -66,17 +77,21 @@ before any user `match` blocks:
 
 ```
 match ".*" {
+  queue = sequential
   timeout = 3600
 }
 ```
 
-The minimal configuration file is thus:
+The minimal recommended configuration file is thus:
 
 ```
 port = <port>
 
 github {
   reposdir = "<path>"
+  match ".*" {
+    email = "<email>"
+  }
 }
 ```
 
@@ -102,10 +117,12 @@ github {
 then the repositories will have the following settings:
 
   * `a/b`:
+    * `queue = sequential`
     * `timeout = 3600`
     * `email = "ghi@jkl.com"`
     * `secret = "sec"`
   * `c/d`:
+    * `queue = sequential`
     * `timeout = 3600`
     * `email = "abc@def.com"`
     * `secret = "sec"`

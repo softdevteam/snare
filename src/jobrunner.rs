@@ -245,18 +245,24 @@ impl JobRunner {
     /// Try to pop all jobs on the queue: returns `true` if it was able to do so successfully or
     /// `false` otherwise.
     fn try_pop_queue(&mut self) -> bool {
-        // Note that the various `unwrap` calls to `queue.lock()` are acceptable because if if it
-        // fails it means that something has gone so seriously wrong in the other thread that
-        // there's no likelihood that we can recover.
-
+        let snare = Arc::clone(&self.snare);
+        let mut queue = snare.queue.lock().unwrap();
         loop {
-            let pjob = self.snare.queue.lock().unwrap().pop();
+            if self.num_running == self.maxjobs && !queue.is_empty() {
+                return false;
+            }
+            let pjob = queue.pop(|path| {
+                self.running.iter().any(|jobslot| {
+                    if let Some(job) = jobslot {
+                        path == job.path
+                    } else {
+                        false
+                    }
+                })
+            });
             match pjob {
                 Some(qj) => {
-                    if self.num_running == self.maxjobs {
-                        self.snare.queue.lock().unwrap().push_front(qj);
-                        return false;
-                    }
+                    debug_assert!(self.num_running < self.maxjobs);
                     match self.try_job(qj) {
                         Ok(j) => {
                             // The unwrap is safe since we've already checked that there's room to
@@ -268,7 +274,7 @@ impl JobRunner {
                         }
                         Err(Some(qj)) => {
                             // The job couldn't be run for temporary reasons: we'll retry later.
-                            self.snare.queue.lock().unwrap().push_front(qj);
+                            queue.push_front(qj);
                             return false;
                         }
                         Err(None) => {
@@ -280,7 +286,12 @@ impl JobRunner {
                         }
                     }
                 }
-                None => return true,
+                None => {
+                    // We weren't able to pop any jobs from the queue, but that doesn't mean that
+                    // the queue is necessarily empty: there may be `QueueKind::Sequential` jobs in
+                    // it which can't be popped until others with the same path have completed.
+                    return queue.is_empty();
+                }
             }
         }
     }
@@ -311,7 +322,7 @@ impl JobRunner {
             if let Ok(stderrout_file) = tempfile() {
                 if set_nonblock(stderrout_file.as_raw_fd()).is_ok() {
                     if let Some(json_path_str) = json_path.to_str() {
-                        let child = match Command::new(qj.path)
+                        let child = match Command::new(qj.path.clone())
                             .arg(qj.event_type)
                             .arg(json_path_str)
                             .current_dir(tempdir.path())
@@ -354,6 +365,7 @@ impl JobRunner {
                             .unwrap();
 
                         return Ok(Job {
+                            path: qj.path,
                             finish_by,
                             child,
                             _tempdir: tempdir,
@@ -463,6 +475,8 @@ impl JobRunner {
 }
 
 struct Job {
+    /// The path of the script we are running.
+    path: String,
     /// What time must this Job have completed by? If it exceeds this time, it will be terminated.
     finish_by: Instant,
     /// The child process itself.

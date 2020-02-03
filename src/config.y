@@ -51,14 +51,24 @@ PerRepoOptions -> Result<Vec<PerRepoOption<StorageT>>, ()>:
 
 PerRepoOption -> Result<PerRepoOption<StorageT>, ()>:
     "EMAIL" "=" "STRING" { Ok(PerRepoOption::Email(map_err($3)?)) }
+  | "QUEUE" "=" QueueKind {
+        let (lexeme, qkind) = $3?;
+        Ok(PerRepoOption::Queue(lexeme, qkind))
+    }
   | "SECRET" "=" "STRING" { Ok(PerRepoOption::Secret(map_err($3)?)) }
   | "TIMEOUT" "=" "INT" { Ok(PerRepoOption::Timeout(map_err($3)?)) }
+  ;
+
+QueueKind -> Result<(Lexeme<StorageT>, QueueKind), ()>:
+    "EVICT" { Ok((map_err($1)?, QueueKind::Evict)) }
+  | "PARALLEL" { Ok((map_err($1)?, QueueKind::Parallel)) }
+  | "SEQUENTIAL" { Ok((map_err($1)?, QueueKind::Sequential)) }
   ;
 
 %%
 use lrpar::Lexeme;
 
-use crate::config_ast::{TopLevelOption, Match, PerRepoOption, ProviderOption};
+use crate::config_ast::{TopLevelOption, Match, PerRepoOption, ProviderOption, QueueKind};
 
 type StorageT = u8;
 

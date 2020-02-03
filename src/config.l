@@ -5,6 +5,7 @@
 \{ "{"
 \} "}"
 email "EMAIL"
+evict "EVICT"
 github "GITHUB"
 match "MATCH"
 maxjobs "MAXJOBS"
@@ -13,6 +14,7 @@ port "PORT"
 queue "QUEUE"
 reposdir "REPOSDIR"
 secret "SECRET"
+sequential "SEQUENTIAL"
 timeout "TIMEOUT"
 //.*?$ ;
 [ \t\n\r]* ;
