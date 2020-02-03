@@ -7,14 +7,15 @@
 email "EMAIL"
 evict "EVICT"
 github "GITHUB"
+listen "LISTEN"
 match "MATCH"
 maxjobs "MAXJOBS"
 parallel "PARALLEL"
-port "PORT"
 queue "QUEUE"
 reposdir "REPOSDIR"
 secret "SECRET"
 sequential "SEQUENTIAL"
 timeout "TIMEOUT"
+user "USER"
 //.*?$ ;
 [ \t\n\r]* ;

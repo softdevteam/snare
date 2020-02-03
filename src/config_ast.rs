@@ -6,8 +6,9 @@ pub enum TopLevelOption<StorageT> {
         Vec<ProviderOption<StorageT>>,
         Vec<Match<StorageT>>,
     ),
+    Listen(Lexeme<StorageT>),
     MaxJobs(Lexeme<StorageT>),
-    Port(Lexeme<StorageT>),
+    User(Lexeme<StorageT>),
 }
 
 pub enum ProviderOption<StorageT> {

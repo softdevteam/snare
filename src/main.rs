@@ -13,11 +13,10 @@ mod jobrunner;
 mod queue;
 
 use std::{
-    env,
+    env::{self, set_current_dir},
     error::Error,
     fmt::Display,
     io::{stderr, Write},
-    net::SocketAddr,
     os::unix::io::RawFd,
     path::{Path, PathBuf},
     process,
@@ -29,9 +28,12 @@ use std::{
 
 use getopts::Options;
 use hyper::Server;
-use nix::{fcntl::OFlag, unistd::pipe2};
+use nix::{
+    fcntl::OFlag,
+    unistd::{pipe2, setresgid, setresuid, Gid, Uid},
+};
 use signal_hook;
-use users::{get_current_uid, get_user_by_uid, os::unix::UserExt};
+use users::{get_current_uid, get_user_by_name, get_user_by_uid, os::unix::UserExt};
 
 use config::Config;
 use queue::Queue;
@@ -110,6 +112,46 @@ fn search_snare_conf() -> Option<PathBuf> {
     None
 }
 
+/// If the config specified a 'user' then switch to that and update $HOME and $USER appropriately.
+fn change_user(conf: &Config) {
+    match conf.user {
+        Some(ref user) => match get_user_by_name(&user) {
+            Some(u) => {
+                if let Err(e) = set_current_dir(u.home_dir()) {
+                    fatal_err(
+                        &format!(
+                            "Can't chdir to user '{}'s homedir {}",
+                            user,
+                            u.home_dir()
+                                .to_str()
+                                .unwrap_or("<can't represent as unicode>")
+                        ),
+                        e,
+                    );
+                }
+                let gid = Gid::from_raw(u.primary_group_id());
+                if let Err(e) = setresgid(gid, gid, gid) {
+                    fatal_err(&format!("Can't switch to group '{}'", user), e);
+                }
+                let uid = Uid::from_raw(u.uid());
+                if let Err(e) = setresuid(uid, uid, uid) {
+                    fatal_err(&format!("Can't switch to user '{}'", user), e);
+                }
+                env::set_var("HOME", u.home_dir());
+                env::set_var("USER", user);
+            }
+            None => fatal(&format!("Unknown user '{}'", user)),
+        },
+        None => {
+            if Uid::current().is_root() {
+                fatal(&format!(
+                    "The 'user' option must be set if snare is run as root"
+                ));
+            }
+        }
+    }
+}
+
 /// Print out program usage then exit.
 fn usage(prog: &str) -> ! {
     let path = Path::new(prog);
@@ -145,11 +187,12 @@ pub async fn main() {
     };
     let conf = Config::from_path(&conf_path).unwrap_or_else(|m| fatal(&m));
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], conf.port));
-    let server = match Server::try_bind(&addr) {
+    let server = match Server::try_bind(&conf.listen) {
         Ok(s) => s,
-        Err(e) => fatal_err("Couldn't bind to port", e),
+        Err(e) => fatal_err("Couldn't bind to address", e),
     };
+
+    change_user(&conf);
 
     let (event_read_fd, event_write_fd) = pipe2(OFlag::O_NONBLOCK).unwrap();
     let sighup_occurred = Arc::new(AtomicBool::new(false));
