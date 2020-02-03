@@ -98,6 +98,16 @@ impl Snare {
         }
     }
 
+    /// Log `msg` as an error, with extra information in the Rust [`Error`](::Error) `err` and then
+    /// exit(1).
+    ///
+    /// # Panics
+    ///
+    /// If `msg` contains a `NUL` byte.
+    fn error_err<E: Into<Box<dyn Error>> + Display>(&self, msg: &str, err: E) {
+        self.error(&format!("{}: {}", msg, err));
+    }
+
     /// Log `msg` as a fatal error and then exit(1).
     ///
     /// # Panics

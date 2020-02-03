@@ -67,11 +67,21 @@ async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>,
     match (secret, sig) {
         (Some(secret), Some(sig)) => {
             if !authenticate(secret, sig, pl) {
+                snare.error(&format!("Authentication failed for {}/{}.", owner, repo));
                 *res.status_mut() = StatusCode::UNAUTHORIZED;
                 return Ok(res);
             }
         }
-        (Some(_), None) | (None, Some(_)) => {
+        (Some(_), None) => {
+            snare.error(&format!("Request was unsigned for {}/{}.", owner, repo));
+            *res.status_mut() = StatusCode::UNAUTHORIZED;
+            return Ok(res);
+        }
+        (None, Some(_)) => {
+            snare.error(&format!(
+                "Request was signed but no secret was specified for {}/{}.",
+                owner, repo
+            ));
             *res.status_mut() = StatusCode::UNAUTHORIZED;
             return Ok(res);
         }
@@ -87,8 +97,8 @@ async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>,
     // tricked into searching for a file outside of the repos dir.
     let mut p = PathBuf::new();
     p.push(&conf.github.reposdir);
-    p.push(owner);
-    p.push(repo);
+    p.push(&owner);
+    p.push(&repo);
     if let Ok(p) = p.canonicalize() {
         if let Some(s) = p.to_str() {
             if s.starts_with(&conf.github.reposdir) {
@@ -107,6 +117,7 @@ async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>,
         }
     }
 
+    snare.error(&format!("No per-repo program {}/{}.", owner, repo));
     // We couldn't find a per-repo program for this request.
     *res.status_mut() = StatusCode::BAD_REQUEST;
     Ok(res)
