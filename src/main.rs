@@ -30,9 +30,10 @@ use getopts::Options;
 use hyper::Server;
 use nix::{
     fcntl::OFlag,
-    unistd::{pipe2, setresgid, setresuid, Gid, Uid},
+    unistd::{daemon, pipe2, setresgid, setresuid, Gid, Uid},
 };
 use signal_hook;
+use tokio::runtime::Runtime;
 use users::{get_current_uid, get_user_by_name, get_user_by_uid, os::unix::UserExt};
 
 use config::Config;
@@ -66,7 +67,8 @@ impl Snare {
     /// this function and caused the config to have changed.**
     fn check_for_sighup(&self) {
         if self.sighup_occurred.load(Ordering::Relaxed) {
-            match Config::from_path(&self.conf_path) {
+            let daemonise = self.conf.lock().unwrap().daemonise;
+            match Config::from_path(&self.conf_path, daemonise) {
                 Ok(conf) => *self.conf.lock().unwrap() = conf,
                 Err(msg) => eprintln!("{}", msg),
             }
@@ -159,21 +161,20 @@ fn usage(prog: &str) -> ! {
         .file_name()
         .map(|x| x.to_str().unwrap_or("snare"))
         .unwrap_or("snare");
-    writeln!(
-        &mut stderr(),
-        "Usage: {} [-e email] [-j <max-jobs>] -p <port> -r <repos-dir> -s <secrets-path>",
-        leaf
-    )
-    .ok();
+    writeln!(&mut stderr(), "Usage: {} [-c <config-path>] [-d]", leaf).ok();
     process::exit(1)
 }
 
-#[tokio::main]
-pub async fn main() {
+pub fn main() {
     let args: Vec<String> = env::args().collect();
     let prog = &args[0];
     let matches = Options::new()
-        .optmulti("c", "config", "Path to snare.conf.", "<path>")
+        .optmulti("c", "config", "Path to snare.conf.", "<conf-path>")
+        .optflag(
+            "d",
+            "",
+            "Don't detach from the terminal and log errors to stderr.",
+        )
         .optflag("h", "help", "")
         .parse(&args[1..])
         .unwrap_or_else(|_| usage(prog));
@@ -181,47 +182,61 @@ pub async fn main() {
         usage(prog);
     }
 
+    let daemonise = !matches.opt_present("d");
+
     let conf_path = match matches.opt_str("c") {
         Some(p) => PathBuf::from(&p),
         None => search_snare_conf().unwrap_or_else(|| fatal("Can't find snare.conf")),
     };
-    let conf = Config::from_path(&conf_path).unwrap_or_else(|m| fatal(&m));
-
-    let server = match Server::try_bind(&conf.listen) {
-        Ok(s) => s,
-        Err(e) => fatal_err("Couldn't bind to address", e),
-    };
+    let conf = Config::from_path(&conf_path, daemonise).unwrap_or_else(|m| fatal(&m));
 
     change_user(&conf);
 
-    let (event_read_fd, event_write_fd) = pipe2(OFlag::O_NONBLOCK).unwrap();
-    let sighup_occurred = Arc::new(AtomicBool::new(false));
-    {
-        let sighup_occurred = Arc::clone(&sighup_occurred);
-        if let Err(e) = unsafe {
-            signal_hook::register(signal_hook::SIGHUP, move || {
-                // All functions called in this function must be signal safe. See signal(3).
-                sighup_occurred.store(true, Ordering::Relaxed);
-                nix::unistd::write(event_write_fd, &[0]).ok();
-            })
-        } {
-            fatal_err("Can't install SIGHUP handler", e);
+    if daemonise {
+        if let Err(e) = daemon(true, false) {
+            fatal_err("Couldn't daemonise: {}", e);
         }
     }
 
-    let snare = Arc::new(Snare {
-        conf_path,
-        conf: Mutex::new(conf),
-        queue: Mutex::new(Queue::new()),
-        event_read_fd,
-        event_write_fd,
-        sighup_occurred,
+    let mut rt = match Runtime::new() {
+        Ok(rt) => rt,
+        Err(e) => fatal_err("Couldn't start tokio runtime.", e),
+    };
+    rt.block_on(async {
+        let server = match Server::try_bind(&conf.listen) {
+            Ok(s) => s,
+            Err(e) => fatal_err("Couldn't bind to address", e),
+        };
+
+        let (event_read_fd, event_write_fd) = pipe2(OFlag::O_NONBLOCK).unwrap();
+        let sighup_occurred = Arc::new(AtomicBool::new(false));
+        {
+            let sighup_occurred = Arc::clone(&sighup_occurred);
+            if let Err(e) = unsafe {
+                signal_hook::register(signal_hook::SIGHUP, move || {
+                    // All functions called in this function must be signal safe. See signal(3).
+                    sighup_occurred.store(true, Ordering::Relaxed);
+                    nix::unistd::write(event_write_fd, &[0]).ok();
+                })
+            } {
+                fatal_err("Can't install SIGHUP handler", e);
+            }
+        }
+
+        let snare = Arc::new(Snare {
+            conf_path,
+            conf: Mutex::new(conf),
+            queue: Mutex::new(Queue::new()),
+            event_read_fd,
+            event_write_fd,
+            sighup_occurred,
+        });
+
+        match jobrunner::attend(Arc::clone(&snare)) {
+            Ok(x) => x,
+            Err(e) => fatal_err("Couldn't start runner thread", e),
+        }
+
+        httpserver::serve(server, Arc::clone(&snare)).await;
     });
-
-    match jobrunner::attend(Arc::clone(&snare)) {
-        Ok(x) => x,
-        Err(e) => fatal_err("Couldn't start runner thread", e),
-    }
-
-    httpserver::serve(server, Arc::clone(&snare)).await;
 }
