@@ -94,7 +94,7 @@ impl Snare {
                 );
             }
         } else {
-            eprintln!("{}\n", msg);
+            eprintln!("{}", msg);
         }
     }
 
@@ -113,7 +113,7 @@ impl Snare {
                 );
             }
         } else {
-            eprintln!("{}\n", msg);
+            eprintln!("{}", msg);
         }
         process::exit(1);
     }
