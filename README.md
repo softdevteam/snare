@@ -17,8 +17,8 @@ where:
 
  * `<config-path>` is a path to a `snare.conf` configuration file. If not
    specified explicitly, the following locations will be searched, in order:
-     * `/etc/snare.conf/`
      * `~/.snare.conf`
+     * `/etc/snare.conf/`
 
 
 ## Configuration file
