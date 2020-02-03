@@ -4,6 +4,7 @@
 = "="
 \{ "{"
 \} "}"
+; ";"
 email "EMAIL"
 evict "EVICT"
 github "GITHUB"

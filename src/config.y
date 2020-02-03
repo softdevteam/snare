@@ -13,9 +13,9 @@ TopLevelOption -> Result<TopLevelOption<StorageT>, ()>:
         let (options, matches) = $3?;
         Ok(TopLevelOption::GitHub($1.unwrap_or_else(|x| x), options, matches))
     }
-  | "LISTEN" "=" "STRING" { Ok(TopLevelOption::Listen(map_err($3)?)) }
-  | "MAXJOBS" "=" "INT" { Ok(TopLevelOption::MaxJobs(map_err($3)?)) }
-  | "USER" "=" "STRING" { Ok(TopLevelOption::User(map_err($3)?)) }
+  | "LISTEN" "=" "STRING" ";" { Ok(TopLevelOption::Listen(map_err($3)?)) }
+  | "MAXJOBS" "=" "INT" ";" { Ok(TopLevelOption::MaxJobs(map_err($3)?)) }
+  | "USER" "=" "STRING" ";" { Ok(TopLevelOption::User(map_err($3)?)) }
   ;
 
 OptionsOrMatches -> Result<(Vec<ProviderOption<StorageT>>, Vec<Match<StorageT>>), ()>:
@@ -33,7 +33,7 @@ OptionsOrMatches -> Result<(Vec<ProviderOption<StorageT>>, Vec<Match<StorageT>>)
   ;
 
 ProviderOption -> Result<ProviderOption<StorageT>, ()>:
-    "REPOSDIR" "=" "STRING" { Ok(ProviderOption::ReposDir(map_err($3)?)) }
+    "REPOSDIR" "=" "STRING" ";" { Ok(ProviderOption::ReposDir(map_err($3)?)) }
   ;
 
 Matches -> Result<Vec<Match<StorageT>>, ()>:
@@ -51,13 +51,13 @@ PerRepoOptions -> Result<Vec<PerRepoOption<StorageT>>, ()>:
   ;
 
 PerRepoOption -> Result<PerRepoOption<StorageT>, ()>:
-    "EMAIL" "=" "STRING" { Ok(PerRepoOption::Email(map_err($3)?)) }
-  | "QUEUE" "=" QueueKind {
+    "EMAIL" "=" "STRING" ";" { Ok(PerRepoOption::Email(map_err($3)?)) }
+  | "QUEUE" "=" QueueKind ";" {
         let (lexeme, qkind) = $3?;
         Ok(PerRepoOption::Queue(lexeme, qkind))
     }
-  | "SECRET" "=" "STRING" { Ok(PerRepoOption::Secret(map_err($3)?)) }
-  | "TIMEOUT" "=" "INT" { Ok(PerRepoOption::Timeout(map_err($3)?)) }
+  | "SECRET" "=" "STRING" ";" { Ok(PerRepoOption::Secret(map_err($3)?)) }
+  | "TIMEOUT" "=" "INT" ";" { Ok(PerRepoOption::Timeout(map_err($3)?)) }
   ;
 
 QueueKind -> Result<(Lexeme<StorageT>, QueueKind), ()>:
