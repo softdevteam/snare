@@ -40,13 +40,16 @@ async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>,
         }
     };
 
-    // Extract the string 'def' from "X-Hub-Signature: abc=def"
-    let sig = match get_hub_sig(&req) {
-        Ok(s) => s,
-        Err(()) => {
+    // Extract the string 'def' from "X-Hub-Signature: abc=def" if the header is present.
+    let sig = if req.headers().contains_key("X-Hub-Signature") {
+        if let Some(sig) = get_hub_sig(&req) {
+            Some(sig)
+        } else {
             *res.status_mut() = StatusCode::BAD_REQUEST;
             return Ok(res);
         }
+    } else {
+        None
     };
 
     let (pl, json_str, owner, repo) = match parse(req).await {
@@ -61,9 +64,18 @@ async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>,
     let conf = snare.conf.lock().unwrap();
     let (rconf, secret) = conf.github.repoconfig(&owner, &repo);
 
-    if !authenticate(secret, sig, pl) {
-        *res.status_mut() = StatusCode::UNAUTHORIZED;
-        return Ok(res);
+    match (secret, sig) {
+        (Some(secret), Some(sig)) => {
+            if !authenticate(secret, sig, pl) {
+                *res.status_mut() = StatusCode::UNAUTHORIZED;
+                return Ok(res);
+            }
+        }
+        (Some(_), None) | (None, Some(_)) => {
+            *res.status_mut() = StatusCode::UNAUTHORIZED;
+            return Ok(res);
+        }
+        (None, None) => (),
     }
 
     if event_type == "ping" {
@@ -101,37 +113,32 @@ async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>,
 }
 
 /// Extract the string 'def' from "X-Hub-Signature: abc=def"
-fn get_hub_sig(req: &Request<Body>) -> Result<String, ()> {
-    Ok(req
-        .headers()
+fn get_hub_sig(req: &Request<Body>) -> Option<String> {
+    req.headers()
         .get("X-Hub-Signature")
-        .ok_or(())?
-        .to_str()
-        .map_err(|_| ())?
-        .split('=')
-        .nth(1)
-        .ok_or(())?
-        .to_owned())
+        .and_then(|s| match s.to_str() {
+            Ok(s) => Some(s),
+            Err(_) => None,
+        })
+        .and_then(|s| s.split('=').nth(1))
+        .and_then(|s| Some(s.to_owned()))
 }
 
 /// Authenticate this request and if successful return `true` (where "success" also includes "the
 /// user didn't specify a secret for this repository").
-fn authenticate(secret: Option<&SecStr>, sig: String, pl: Bytes) -> bool {
-    if let Some(ref sec) = secret {
-        // We've already checked the key length when creating the config, so the unwrap() is safe.
-        let mut mac = Hmac::<Sha1>::new_varkey(sec.unsecure()).unwrap();
-        mac.input(&*pl);
-        match hex::decode(sig) {
-            Ok(d) => {
-                if mac.verify(&d).is_ok() {
-                    return true;
-                }
-                return false;
+fn authenticate(secret: &SecStr, sig: String, pl: Bytes) -> bool {
+    // We've already checked the key length when creating the config, so the unwrap() is safe.
+    let mut mac = Hmac::<Sha1>::new_varkey(secret.unsecure()).unwrap();
+    mac.input(&*pl);
+    match hex::decode(sig) {
+        Ok(d) => {
+            if mac.verify(&d).is_ok() {
+                return true;
             }
-            Err(_) => return false,
+            return false;
         }
+        Err(_) => return false,
     }
-    true
 }
 
 /// Parse `pl` into JSON, and return `(<JSON as a String>, <repo owner>, <repo name>)`.
