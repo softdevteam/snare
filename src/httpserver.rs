@@ -66,6 +66,11 @@ async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>,
         return Ok(res);
     }
 
+    if event_type == "ping" {
+        *res.status_mut() = StatusCode::OK;
+        return Ok(res);
+    }
+
     // We now check that there is a per-repo program for this repository and that we haven't been
     // tricked into searching for a file outside of the repos dir.
     let mut p = PathBuf::new();
