@@ -85,7 +85,10 @@ A `match` block supports the following options:
        jobs will stay on the queue and be executed in FIFO order.
  * `secret = "<secret>";` is an optional GitHub secret which guarantees that
    hooks are coming from your GitHub repository and not a malfeasant. Although
-   this is optional, we *highly* recommend setting it in all cases.
+   this is optional, we *highly* recommend setting it in all cases. Note also
+   that if a GitHub request is signed, but you have not specified a secret,
+   then snare will return the request as "unauthorised" to remind you to use
+   the secret at both ends.
  * `timeout = <timeout>;` optionally specifies the elapsed time in seconds that
    a process can run before being sent SIGTERM.
 
