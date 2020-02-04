@@ -105,6 +105,8 @@ impl Queue {
             }
         }
         if let Some(k) = earliest_key {
+            // We know that there's an `Entry` for the key, and that the corresponding value vec
+            // has at least one value, so both unwrap()s are safe.
             Some(self.q.get_mut(&k).unwrap().pop_front().unwrap())
         } else {
             None

@@ -48,7 +48,6 @@ struct JobRunner {
 
 impl JobRunner {
     fn new(snare: Arc<Snare>) -> Result<Self, Box<dyn Error>> {
-        // If the unwrap() on the lock fails, the other thread has paniced.
         let maxjobs = snare.conf.lock().unwrap().maxjobs;
         assert!(maxjobs <= (std::usize::MAX - 1) / 2);
         let mut running = Vec::with_capacity(maxjobs);
@@ -109,6 +108,12 @@ impl JobRunner {
             // See if any of our active jobs have events. Knowing when a pipe is actually closed is
             // surprisingly hard. https://www.greenend.org.uk/rjk/tech/poll.html has an interesting
             // suggestion which we adapt slightly here.
+            //
+            // This `for` loop has various unwrap() calls. If `flags[i * 2]` or `flags[i * 2 + 1]`
+            // is `Some(_)`, then `self.running[i]` is `Some(_)`, so the
+            // `self.running.as_mut.unwrap()`s are safe. Since we asked for stderr/stdout to be
+            // captured, `std[err|out].as_mut().unwrap()` should also be safe (though the Rust docs
+            // are a little vague on this).
             for i in 0..self.maxjobs {
                 // stderr
                 if let Some(flags) = self.pollfds[i * 2].revents() {
@@ -188,6 +193,8 @@ impl JobRunner {
                     ..
                 }) = self.running[i]
                 {
+                    // In the below, we know from the `let Some(_)` that `self.running[i]` is
+                    // `Some(_)` and the unwrap thus safe.
                     let mut exited = false;
                     let mut exited_success = false;
                     match self.running[i].as_mut().unwrap().child.try_wait() {
@@ -345,6 +352,8 @@ impl JobRunner {
                             }
                         };
 
+                        // Since we've asked for stderr/stdout to be captured, the unwrap()s should
+                        // be safe, though the Rust docs are slightly vague on this.
                         let stderr = child.stderr.as_ref().unwrap();
                         let stdout = child.stdout.as_ref().unwrap();
 
@@ -393,6 +402,8 @@ impl JobRunner {
     fn update_pollfds(&mut self) {
         for (i, jobslot) in self.running.iter().enumerate() {
             let (stderr_fd, stdout_fd) = if let Some(job) = jobslot {
+                // Since we've asked for stderr/stdout to be captured, the unwrap()s should be
+                // safe, though the Rust docs are slightly vague on this.
                 let stderr_fd = if job.stderr_hup {
                     -1
                 } else {
@@ -457,11 +468,11 @@ impl JobRunner {
 
             match EmailAddress::new(toaddr.to_string()) {
                 Ok(toea) => {
-                    let email = SendableEmail::new(
-                        Envelope::new(fromea, vec![toea]).unwrap(),
-                        "na".to_string(),
-                        buf,
-                    );
+                    let env = match Envelope::new(fromea, vec![toea]) {
+                        Ok(env) => env,
+                        Err(e) => return self.snare.error_err("Couldn't send email: {:?}", e),
+                    };
+                    let email = SendableEmail::new(env, "na".to_string(), buf);
 
                     let mut sender = SendmailTransport::new();
                     if let Err(e) = sender.send(email) {

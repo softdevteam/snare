@@ -50,9 +50,13 @@ pub(crate) struct Snare {
     daemonised: bool,
     /// The location of snare.conf; this file will be reloaded if SIGHUP is received.
     conf_path: PathBuf,
-    /// The current configuration: note that this can change at any point due to SIGHUP.
+    /// The current configuration: note that this can change at any point due to SIGHUP. All calls
+    /// to `conf.lock().unwrap()` are considered safe since the only way this can fail is if the
+    /// other thread has `panic`ed, at which point we're already doomed.
     conf: Mutex<Config>,
-    /// The current queue of incoming jobs.
+    /// The current queue of incoming jobs. All calls to `queue.lock().unwrap()` are considered
+    /// safe since the only way this can fail is if the other thread has `panic`ed, at which point
+    /// we're already doomed.
     queue: Mutex<Queue>,
     /// The read end of the pipe used by the httpserver and the SIGHUP handler to wake up the job
     /// runner thread.
@@ -86,12 +90,14 @@ impl Snare {
     /// If `msg` contains a `NUL` byte.
     fn error(&self, msg: &str) {
         if self.daemonised {
+            // We know that `%s` and `<can't represent as CString>` are both valid C strings, and
+            // that neither unwrap() can fail.
+            let fmt = CString::new("%s").unwrap().as_ptr();
+            let msg = CString::new(msg)
+                .unwrap_or_else(|_| CString::new("<can't represent as CString>").unwrap())
+                .as_ptr();
             unsafe {
-                syslog(
-                    LOG_ERR,
-                    CString::new("%s").unwrap().as_ptr(),
-                    CString::new(msg).unwrap().as_ptr(),
-                );
+                syslog(LOG_ERR, fmt, msg);
             }
         } else {
             eprintln!("{}", msg);
@@ -115,12 +121,14 @@ impl Snare {
     /// If `msg` contains a `NUL` byte.
     fn fatal(&self, msg: &str) -> ! {
         if self.daemonised {
+            // We know that `%s` and `<can't represent as CString>` are both valid C strings, and
+            // that neither unwrap() can fail.
+            let fmt = CString::new("%s").unwrap().as_ptr();
+            let msg = CString::new(msg)
+                .unwrap_or_else(|_| CString::new("<can't represent as CString>").unwrap())
+                .as_ptr();
             unsafe {
-                syslog(
-                    LOG_CRIT,
-                    CString::new("%s").unwrap().as_ptr(),
-                    CString::new(msg).unwrap().as_ptr(),
-                );
+                syslog(LOG_CRIT, fmt, msg);
             }
         } else {
             eprintln!("{}", msg);
@@ -268,16 +276,21 @@ pub fn main() {
             .to_owned(),
         Err(_) => "snare".to_owned(),
     };
-    // openlog's first argument `ident` is incompletely specified, but in practise we have to assume that
-    // syslog merely stores a pointer to the string (i.e. it doesn't copy the string). We thus
-    // deliberately leak memory here in order that the pointer always points to valid memory.
+    // openlog's first argument `ident` is incompletely specified, but in practise we have to
+    // assume that syslog merely stores a pointer to the string (i.e. it doesn't copy the string).
+    // We thus deliberately leak memory here in order that the pointer always points to valid
+    // memory. The unwrap() here is ugly, but if it fails, it means we've run out of memory, so
+    // it's neither likely to fail nor, if it does, can we do anything to clear up from it.
     let progname =
         Box::into_raw(CString::new(progname).unwrap().into_boxed_c_str()) as *const c_char;
     unsafe {
         openlog(progname, LOG_CONS, LOG_DAEMON);
     }
 
-    let (event_read_fd, event_write_fd) = pipe2(OFlag::O_NONBLOCK).unwrap();
+    let (event_read_fd, event_write_fd) = match pipe2(OFlag::O_NONBLOCK) {
+        Ok(p) => p,
+        Err(e) => fatal_err("Can't create pipe", e),
+    };
     let sighup_occurred = Arc::new(AtomicBool::new(false));
     {
         let sighup_occurred = Arc::clone(&sighup_occurred);
