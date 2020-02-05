@@ -305,15 +305,22 @@ impl JobRunner {
         let json_path = match NamedTempFile::new() {
             Ok(tfile) => match tfile.into_temp_path().keep() {
                 Ok(p) => {
-                    if fs::write(&p, qj.json_str.as_bytes()).is_err() {
+                    if let Err(e) = fs::write(&p, qj.json_str.as_bytes()) {
+                        self.snare.error_err("Couldn't write JSON file.", e);
                         remove_file(p).ok();
                         return Err(Some(qj));
                     }
                     p
                 }
-                Err(_) => return Err(Some(qj)),
+                Err(e) => {
+                    self.snare.error_err("Couldn't create temporary file.", e);
+                    return Err(Some(qj));
+                }
             },
-            Err(_) => return Err(Some(qj)),
+            Err(e) => {
+                self.snare.error_err("Couldn't create temporary file.", e);
+                return Err(Some(qj));
+            }
         };
 
         // We combine the child process's stderr/stdout and write them to an unnamed temporary
@@ -333,7 +340,7 @@ impl JobRunner {
                         {
                             Ok(c) => c,
                             Err(e) => {
-                                self.snare.error(&format!("Can't spawn command: {:?}", e));
+                                self.snare.error_err("Can't spawn command: {:?}", e);
                                 return Err(None);
                             }
                         };
@@ -346,10 +353,8 @@ impl JobRunner {
                         if let Err(e) =
                             set_nonblock(stderr_fd).and_then(|_| set_nonblock(stdout_fd))
                         {
-                            self.snare.error(&format!(
-                                "Can't set file descriptors to non-blocking: {:?}",
-                                e
-                            ));
+                            self.snare
+                                .error_err("Can't set file descriptors to non-blocking: {:?}", e);
                             return Err(None);
                         }
 
@@ -460,7 +465,7 @@ impl JobRunner {
 
                     let mut sender = SendmailTransport::new();
                     if let Err(e) = sender.send(email) {
-                        self.snare.error(&format!("Couldn't send email: {:?}", e));
+                        self.snare.error_err("Couldn't send email: {:?}", e);
                     }
                 }
                 Err(_) => self
