@@ -60,7 +60,6 @@ async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>,
         }
     };
 
-    // If the unwrap() on the lock fails, the other thread has paniced.
     let conf = snare.conf.lock().unwrap();
     let (rconf, secret) = conf.github.repoconfig(&owner, &repo);
 
@@ -102,9 +101,6 @@ async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>,
     if let Ok(p) = p.canonicalize() {
         if let Some(s) = p.to_str() {
             if s.starts_with(&conf.github.reposdir) {
-                // We can tolerate the `unwrap` call below because if it fails it means that
-                // something has gone so seriously wrong in the other thread that there's no
-                // likelihood that we can recover.
                 let qj = QueueJob::new(s.to_owned(), req_time, event_type, json_str, rconf);
                 (*snare.queue.lock().unwrap()).push_back(qj);
                 *res.status_mut() = StatusCode::OK;

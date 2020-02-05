@@ -142,23 +142,17 @@ impl Config {
             }
             _ => process::exit(1),
         }
-        if maxjobs.is_none() {
-            maxjobs = Some(num_cpus::get());
-        }
-        if listen.is_none() {
-            return Err("A 'listen' address must be specified".to_owned());
-        }
-        if github.is_none() {
-            return Err(
-                "A GitHub block with at least a 'repodirs' option must be specified".to_owned(),
-            );
-        }
+        let maxjobs = maxjobs.unwrap_or_else(|| num_cpus::get());
+        let listen = listen.ok_or_else(|| "A 'listen' address must be specified".to_owned())?;
+        let github = github.ok_or_else(|| {
+            "A GitHub block with at least a 'repodirs' option must be specified".to_owned()
+        })?;
 
         Ok(Config {
-            listen: listen.unwrap(),
-            maxjobs: maxjobs.unwrap(),
-            github: github.unwrap(),
-            user: user,
+            listen,
+            maxjobs,
+            github,
+            user,
         })
     }
 }
@@ -343,7 +337,8 @@ impl GitHub {
                 }
             }
         }
-        // Since we know that Matches::default() provides a default timeout, this unwrap() is safe.
+        // Since we know that Matches::default() provides a default queuekind and timeout, both
+        // unwraps() are safe.
         (
             RepoConfig {
                 email,
@@ -370,6 +365,7 @@ pub struct Match {
 
 impl Default for Match {
     fn default() -> Self {
+        // We know that this Regex is valid so the unwrap() is safe.
         let re = Regex::new(".*").unwrap();
         Match {
             re,
