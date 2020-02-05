@@ -112,6 +112,7 @@ github {
   reposdir = "<path>";
   match ".*" {
     email = "<email>";
+    secret = "<secret>";
   }
 }
 ```
@@ -206,3 +207,24 @@ careful to quote all arguments obtained from JSON; and it uses a fixed
 directory name (`repo`) rather than use a file name from JSON that might
 include characters (e.g. `../..`) that would cause the script to leak data
 about other parts of the file system.
+
+
+## Integration with GitHub
+
+`snare` runs an HTTP server which GitHub can send webhook requests to.
+Configuring a webhook for a given GitHub repository is relatively simple: go to
+that repository, then `Settings > Webhooks > Add webhook`. For `payload`,
+specify `http://yourmachine.com:port/`, specify a `secret` (which you will then
+reuse as the `secret` in `snare.conf`) and then choose which events you wish
+GitHub to deliver. For example, the default `Just the push event` works well
+with the email diff sending per-repo program above, but you can specify
+whichever events you wish.
+
+
+## HTTPS/TLS
+
+`snare` runs an HTTP server. If you wish, as is recommended, to send your
+webhooks over an encrypted connection, you will need to run a proxy in front of
+snare e.g.
+[nginx](https://docs.nginx.com/nginx/admin-guide/web-server/reverse-proxy/) or
+[relayd](https://man.openbsd.org/relayd.8).
