@@ -1,0 +1,16 @@
+[licenses]
+unlicensed = "deny"
+confidence-threshold = 1.0
+allow = [
+    "Apache-2.0",
+    "BSD-3-Clause",
+    "MIT",
+    "Unlicense"
+]
+
+# We'd prefer not to use the MPL if possible, so explicitly whitelist it each
+# time we have to use it.
+exceptions = [
+    { name = "ascii_utils", allow = ["MPL-2.0"] },
+    { name = "fast_chemail", allow = ["MPL-2.0"] }
+]
