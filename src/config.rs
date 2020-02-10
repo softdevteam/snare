@@ -9,7 +9,7 @@ use std::{
 use crypto_mac::{InvalidKeyLength, Mac};
 use hmac::Hmac;
 use lrlex::lrlex_mod;
-use lrpar::{lrpar_mod, Lexeme, Lexer};
+use lrpar::{lrpar_mod, Lexer, Span};
 use regex::Regex;
 use secstr::SecStr;
 use sha1::Sha1;
@@ -61,58 +61,58 @@ impl Config {
             Some(Ok(opts)) => {
                 for opt in opts {
                     match opt {
-                        config_ast::TopLevelOption::GitHub(lexeme, options, matches) => {
+                        config_ast::TopLevelOption::GitHub(span, options, matches) => {
                             if github.is_some() {
-                                return Err(error_at_lexeme(
+                                return Err(error_at_span(
                                     &lexer,
-                                    lexeme,
+                                    span,
                                     "Mustn't specify 'github' more than once",
                                 ));
                             }
                             github = Some(GitHub::parse(&lexer, options, matches)?);
                         }
-                        config_ast::TopLevelOption::Listen(lexeme) => {
+                        config_ast::TopLevelOption::Listen(span) => {
                             if listen.is_some() {
-                                return Err(error_at_lexeme(
+                                return Err(error_at_span(
                                     &lexer,
-                                    lexeme,
+                                    span,
                                     "Mustn't specify 'listen' more than once",
                                 ));
                             }
-                            let listen_str = lexer.lexeme_str(&lexeme);
+                            let listen_str = lexer.span_str(span);
                             let listen_str = &listen_str[1..listen_str.len() - 1];
                             match SocketAddr::from_str(listen_str) {
                                 Ok(l) => listen = Some(l),
                                 Err(e) => {
-                                    return Err(error_at_lexeme(
+                                    return Err(error_at_span(
                                         &lexer,
-                                        lexeme,
+                                        span,
                                         &format!("Invalid listen address '{}': {}", listen_str, e),
                                     ));
                                 }
                             }
                         }
-                        config_ast::TopLevelOption::MaxJobs(lexeme) => {
+                        config_ast::TopLevelOption::MaxJobs(span) => {
                             if maxjobs.is_some() {
-                                return Err(error_at_lexeme(
+                                return Err(error_at_span(
                                     &lexer,
-                                    lexeme,
+                                    span,
                                     "Mustn't specify 'maxjobs' more than once",
                                 ));
                             }
-                            let maxjobs_str = lexer.lexeme_str(&lexeme);
+                            let maxjobs_str = lexer.span_str(span);
                             match maxjobs_str.parse() {
                                 Ok(0) => {
-                                    return Err(error_at_lexeme(
+                                    return Err(error_at_span(
                                         &lexer,
-                                        lexeme,
+                                        span,
                                         "Must allow at least 1 job",
                                     ))
                                 }
                                 Ok(x) if x > (std::usize::MAX - 1) / 2 => {
-                                    return Err(error_at_lexeme(
+                                    return Err(error_at_span(
                                         &lexer,
-                                        lexeme,
+                                        span,
                                         &format!(
                                             "Maximum number of jobs is {}",
                                             (std::usize::MAX - 1) / 2
@@ -121,19 +121,19 @@ impl Config {
                                 }
                                 Ok(x) => maxjobs = Some(x),
                                 Err(e) => {
-                                    return Err(error_at_lexeme(&lexer, lexeme, &format!("{}", e)))
+                                    return Err(error_at_span(&lexer, span, &format!("{}", e)))
                                 }
                             }
                         }
-                        config_ast::TopLevelOption::User(lexeme) => {
+                        config_ast::TopLevelOption::User(span) => {
                             if user.is_some() {
-                                return Err(error_at_lexeme(
+                                return Err(error_at_span(
                                     &lexer,
-                                    lexeme,
+                                    span,
                                     "Mustn't specify 'user' more than once",
                                 ));
                             }
-                            let user_str = lexer.lexeme_str(&lexeme);
+                            let user_str = lexer.span_str(span);
                             let user_str = &user_str[1..user_str.len() - 1];
                             user = Some(user_str.to_owned());
                         }
@@ -166,24 +166,24 @@ pub struct GitHub {
 impl GitHub {
     fn parse(
         lexer: &dyn Lexer<StorageT>,
-        options: Vec<config_ast::ProviderOption<StorageT>>,
-        ast_matches: Vec<config_ast::Match<StorageT>>,
+        options: Vec<config_ast::ProviderOption>,
+        ast_matches: Vec<config_ast::Match>,
     ) -> Result<Self, String> {
         let mut reposdir = None;
         let mut matches = vec![Match::default()];
 
         for option in options {
             match option {
-                config_ast::ProviderOption::ReposDir(lexeme) => {
+                config_ast::ProviderOption::ReposDir(span) => {
                     if reposdir.is_some() {
-                        return Err(error_at_lexeme(
+                        return Err(error_at_span(
                             lexer,
-                            lexeme,
+                            span,
                             "Mustn't specify 'reposdir' more than once",
                         ));
                     }
 
-                    let reposdir_str = lexer.lexeme_str(&lexeme);
+                    let reposdir_str = lexer.span_str(span);
                     let reposdir_str = &reposdir_str[1..reposdir_str.len() - 1];
                     reposdir = Some(match canonicalize(reposdir_str) {
                         Ok(p) => match p.to_str() {
@@ -201,12 +201,12 @@ impl GitHub {
         }
 
         for m in ast_matches {
-            let re_str = lexer.lexeme_str(&m.re);
+            let re_str = lexer.span_str(m.re);
             let re_str = format!("^{}$", &re_str[1..re_str.len() - 1]);
             let re = match Regex::new(&re_str) {
                 Ok(re) => re,
                 Err(e) => {
-                    return Err(error_at_lexeme(
+                    return Err(error_at_span(
                         lexer,
                         m.re,
                         &format!("Regular expression error: {}", e),
@@ -219,23 +219,23 @@ impl GitHub {
             let mut timeout = None;
             for opt in m.options {
                 match opt {
-                    config_ast::PerRepoOption::Email(lexeme) => {
+                    config_ast::PerRepoOption::Email(span) => {
                         if email.is_some() {
-                            return Err(error_at_lexeme(
+                            return Err(error_at_span(
                                 lexer,
-                                lexeme,
+                                span,
                                 "Mustn't specify 'email' more than once",
                             ));
                         }
-                        let email_str = lexer.lexeme_str(&lexeme);
+                        let email_str = lexer.span_str(span);
                         let email_str = &email_str[1..email_str.len() - 1];
                         email = Some(email_str.to_owned());
                     }
-                    config_ast::PerRepoOption::Queue(lexeme, qkind) => {
+                    config_ast::PerRepoOption::Queue(span, qkind) => {
                         if queuekind.is_some() {
-                            return Err(error_at_lexeme(
+                            return Err(error_at_span(
                                 lexer,
-                                lexeme,
+                                span,
                                 "Mustn't specify 'queue' more than once",
                             ));
                         }
@@ -245,15 +245,15 @@ impl GitHub {
                             config_ast::QueueKind::Sequential => QueueKind::Sequential,
                         });
                     }
-                    config_ast::PerRepoOption::Secret(lexeme) => {
+                    config_ast::PerRepoOption::Secret(span) => {
                         if secret.is_some() {
-                            return Err(error_at_lexeme(
+                            return Err(error_at_span(
                                 lexer,
-                                lexeme,
+                                span,
                                 "Mustn't specify 'secret' more than once",
                             ));
                         }
-                        let sec_str = lexer.lexeme_str(&lexeme);
+                        let sec_str = lexer.span_str(span);
                         let sec_str = &sec_str[1..sec_str.len() - 1];
 
                         // Looking at the Hmac code, it seems that a key can't actually be of an
@@ -263,29 +263,25 @@ impl GitHub {
                         match Hmac::<Sha1>::new_varkey(sec_str.as_bytes()) {
                             Ok(_) => (),
                             Err(InvalidKeyLength) => {
-                                return Err(error_at_lexeme(
-                                    lexer,
-                                    lexeme,
-                                    "Invalid secret key length",
-                                ))
+                                return Err(error_at_span(lexer, span, "Invalid secret key length"))
                             }
                         }
                         secret = Some(SecStr::from(sec_str));
                     }
-                    config_ast::PerRepoOption::Timeout(lexeme) => {
+                    config_ast::PerRepoOption::Timeout(span) => {
                         if timeout.is_some() {
-                            return Err(error_at_lexeme(
+                            return Err(error_at_span(
                                 lexer,
-                                lexeme,
+                                span,
                                 "Mustn't specify 'timeout' more than once",
                             ));
                         }
-                        let t = match lexer.lexeme_str(&lexeme).parse() {
+                        let t = match lexer.span_str(span).parse() {
                             Ok(t) => t,
                             Err(e) => {
-                                return Err(error_at_lexeme(
+                                return Err(error_at_span(
                                     lexer,
-                                    lexeme,
+                                    span,
                                     &format!("Invalid timeout: {}", e),
                                 ))
                             }
@@ -377,15 +373,20 @@ impl Default for Match {
     }
 }
 
-/// Return an error message pinpointing `lexeme` as the culprit.
-fn error_at_lexeme(lexer: &dyn Lexer<StorageT>, lexeme: Lexeme<StorageT>, msg: &str) -> String {
-    let (line_off, col) = lexer.line_col(lexeme.start());
-    let line = lexer.surrounding_line_str(lexeme.start());
+/// Return an error message pinpointing `span` as the culprit.
+fn error_at_span(lexer: &dyn Lexer<StorageT>, span: Span, msg: &str) -> String {
+    let ((line_off, col), _) = lexer.line_col(span);
+    let code = lexer
+        .span_lines_str(span)
+        .split("\n")
+        .nth(0)
+        .unwrap()
+        .trim();
     format!(
         "Line {}, column {}:\n  {}\n{}",
         line_off,
         col,
-        line.trim(),
+        code.trim(),
         msg
     )
 }
