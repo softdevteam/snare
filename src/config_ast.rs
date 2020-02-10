@@ -1,30 +1,26 @@
-use lrpar::Lexeme;
+use lrpar::Span;
 
-pub enum TopLevelOption<StorageT> {
-    GitHub(
-        Lexeme<StorageT>,
-        Vec<ProviderOption<StorageT>>,
-        Vec<Match<StorageT>>,
-    ),
-    Listen(Lexeme<StorageT>),
-    MaxJobs(Lexeme<StorageT>),
-    User(Lexeme<StorageT>),
+pub enum TopLevelOption {
+    GitHub(Span, Vec<ProviderOption>, Vec<Match>),
+    Listen(Span),
+    MaxJobs(Span),
+    User(Span),
 }
 
-pub enum ProviderOption<StorageT> {
-    ReposDir(Lexeme<StorageT>),
+pub enum ProviderOption {
+    ReposDir(Span),
 }
 
-pub struct Match<StorageT> {
-    pub re: Lexeme<StorageT>,
-    pub options: Vec<PerRepoOption<StorageT>>,
+pub struct Match {
+    pub re: Span,
+    pub options: Vec<PerRepoOption>,
 }
 
-pub enum PerRepoOption<StorageT> {
-    Email(Lexeme<StorageT>),
-    Queue(Lexeme<StorageT>, QueueKind),
-    Secret(Lexeme<StorageT>),
-    Timeout(Lexeme<StorageT>),
+pub enum PerRepoOption {
+    Email(Span),
+    Queue(Span, QueueKind),
+    Secret(Span),
+    Timeout(Span),
 }
 
 pub enum QueueKind {
