@@ -113,7 +113,7 @@ or not).
 This uses the `sendmail` command to send email: you should ensure that you have
 installed, set-up, and enabled a suitable `sendmail` clone.
 .It Sy queue = Po evict | parallel | sequential Pc ;
-optionally specifies what to do when multiple requests for the same repository
+specifies what to do when multiple requests for the same repository
 are queued at once:
 .Bl -tag -width Ds
 .It Sy evict
@@ -129,12 +129,15 @@ only run one job for this repository at a time.
 Additional jobs will stay on the queue and be executed in FIFO order.
 .El
 .Pp
-Defaults to
+The default
+.Sy match
+block sets this to
 .Sy sequential ,
 which is always safe, though at the possible expense of lower job throughput
 for any given repository.
 .It Sy secret = Qq Em secret ;
-is the optional GitHub secret used to sign the webhook request. This allows
+is the optional GitHub secret used to sign the webhook request.
+This allows
 .Nm
 to tell the difference between genuine webhook requests and those from
 malfeasants.
@@ -146,9 +149,11 @@ secret, then snare will return the request as
 .Dq unauthorised
 to remind you to use the secret at both ends.
 .It Sy timeout = Em period ;
-optionally specifies the elapsed time, as a positive integer, in seconds that a
+specifies the elapsed time, as a positive integer, in seconds that a
 process can run before being sent SIGTERM.
-Defaults to one hour (3600 seconds).
+The default
+.Sy match
+block sets this to one hour (3600 seconds).
 .El
 .Pp
 .Sy match
