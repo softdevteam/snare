@@ -44,11 +44,16 @@ where:
   * `ip-address` is either an IPv4 or IPv6 address and `port` a port on which an
     HTTP server will listen.
   * `path` is the directory where the per-repo programs are stored. For a
-    repository `repo` owned by `user` the command `<reposdir>/<user>/<repo>
-    <event> <path to GitHub JSON>` will be run. Note that per-repo programs are
-    run with their current working directory set to a temporary directory to
-    which they can freely write and which will be automatically removed when
-    they have completed.
+    repository `repo` owned by `user` the command:
+
+      ```
+      <reposdir>/<user>/<repo> <event> <path to GitHub JSON>
+      ```
+
+    will be run. The file `<repo>` must be executable. Note that per-repo
+    programs are run with their current working directory set to a temporary
+    directory to which they can freely write and which will be automatically
+    removed when they have completed.
  * `email-address` is an email address to which any errors running per-repo
    programs will be sent (warning: full stderr/stdout will be sent, so consider
    carefully whether these have sensitive information or not). This uses
