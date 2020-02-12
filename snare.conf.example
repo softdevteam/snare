@@ -1,0 +1,22 @@
+// Set 'listen' to either:
+//   * An IPv4 address (e.g. "0.0.0.0:8011" listens on all IPv4 interfaces).
+//   * An IPv6 address (e.g. "[::]:8011" listens on all IPv4 and all IPv6
+//     interfaces).
+listen = "<address>:<port>";
+
+github {
+  // The path to the directory where your per-repo programs are stored.
+  reposdir = "<path>";
+
+  match ".*" {
+    // An email address where errors in running commands will be sent (warning:
+    // full stderr/stdout will be sent, so consider carefully whether these
+    // have sensitive information or not). This uses the `sendmail` command to
+    // send email: you should ensure that you have installed, set-up, and
+    // enabled a suitable `sendmail` clone.
+    email = "<email>";
+
+    // The GitHub secret used to sign webhook requests.
+    secret = "<secret>";
+  }
+}
