@@ -1,0 +1,295 @@
+.Dd 2020-02-10
+.Dt SNARE.CONF 5
+.Os
+.Sh NAME
+.Nm snare.conf
+.Nd snare configuration file
+.Sh DESCRIPTION
+.Nm
+is the configuration file for
+.Xr snare 1 .
+It consists of one or more top-level options and one GitHub block.
+.Pp
+The top-level options are:
+.Bl -tag -width Ds
+.It Sy listen = Qq Em address ;
+is a mandatory address and port number to listen on.
+The format of
+.Em address
+is either:
+.Bl -tag -width -Ds
+.It x.x.x.x:port
+an IPv4 address and port.
+For example,
+.Ql 0.0.0.0:8765
+will listen on port 8765 on for all IPv4 addresses.
+.It [x:x:x]:port
+an IPv6 address and port.
+For example,
+.Ql [::]:8765
+will listen on port 8765 for all IPv4 and IPv6 addresses.
+.El
+.It Sy maxjobs = Em int ;
+is an optional non-zero positive integer specifying the maximum number of
+jobs to run in parallel.
+Defaults to the number of CPUs in the machine.
+.It Sy user = Qq Em user-name ;
+is an optional username that
+.Nm
+will try and change into after it has bound to a network port.
+Note that
+.Nm
+will refuse to run as root unless
+.Sy user
+is specified.
+As part of changing user,
+.Nm :
+.Bl -bullet
+.It
+changes its uid, euid, suid to the UID of
+.Em user-name .
+.It
+changes its gid, egid, sgid to the primary GID of
+.Em user-name .
+.It
+changes its CWD to the home directory of
+.Em user-name .
+.It
+sets the $HOME environment variable to the home directory of
+.Em user-name .
+.It
+sets the $USER environment variable to
+.Em user-name .
+.El
+.Pp
+All other environment variables are passed through to per-repo programs
+unchanged.
+.It Sy github { ... }
+specifies GitHub specific options.
+.El
+.Pp
+A
+.Sq github
+block supports the following options:
+.Bl -tag -width Ds
+.It Sy reposdir = Qq Em path ;
+is a path to a directory containing per-repo programs (see
+.Sx PER-REPO PROGRAMS
+for more information).
+.It Sy match Qo Em regex Qc { Em match-options }
+where
+.Em regex
+is a regular expression in
+.Lk https://docs.rs/regex/ Rust regex format
+that must match against a
+.Qq owner/repo
+full repository name.
+If it matches, then
+.Em match-options
+are applied.
+.Qq regex
+must match against the full repository name: in other words, it is equivalent
+to
+.Em ^regex$ .
+Thus the regex
+.Qq a/b
+does not match against the full repository name
+.Qq a/bc ,
+but the regex
+.Qq a/b.*
+does match against
+.Qo a/bc Qc .
+.El
+.Pp
+A
+.Sq match
+block supports the following options:
+.Bl -tag -width Ds
+.It Sy email = Qq Em address ;
+optionally specifies an email address to which any
+errors running per-repo programs will be sent (warning: full stderr/stdout
+will be sent, so consider carefully whether these have sensitive information
+or not).
+.It Sy queue = Po evict | parallel | sequential Pc ;
+optionally specifies what to do when multiple requests for the same repository
+are queued at once:
+.Bl -tag -width Ds
+.It Sy evict
+only run one job for this repository at a time.
+Additional jobs will stay on the queue: if a new job comes in for that
+repository, it evicts any previously queued jobs for that repository.
+In other words, for this repository there can be at most one running job and
+one queued job at any point.
+.It Sy parallel
+run as many jobs for this repository in parallel as possible.
+.It Sy sequential
+only run one job for this repository at a time.
+Additional jobs will stay on the queue and be executed in FIFO order.
+.El
+.It Sy secret = Qq Em secret ;
+is an optional GitHub secret which guarantees that hooks are coming from your
+GitHub repository and not a malfeasant.
+Although this is optional, we
+.Em highly
+recommend setting it in all cases.
+Note also that if a GitHub request is signed, but you have not specified a
+secret, then snare will return the request as
+.Dq unauthorised
+to remind you to use the secret at both ends.
+.It Sy timeout = Em period ;
+optionally specifies the elapsed time, as a positive integer, in seconds that a
+process can run before being sent SIGTERM.
+.El
+.Pp
+.Sy match
+blocks are evaluated in order from top to bottom with each successful
+match overriding previous settings.
+A default
+.Sy match
+block is inserted before any user
+.Sy match
+blocks:
+.Bd -literal -offset 4n
+match ".*" {
+  queue = sequential;
+  timeout = 3600;
+}
+.Ed
+.Sh PER-REPO PROGRAMS
+When using
+.Nm ,
+the per-repo programs do the actual work of executing specific actions for a
+given repository.
+For a repository repo owned by
+.Ql user ,
+the command
+.Bd -literal -offset 4n
+<reposdir>/<user>/<repo> <event> <path-to-GitHub-JSON>
+.Ed
+.Pp
+will be run.
+Per-repo programs must be marked as executable and are run with their current
+working directory set to a temporary directory to which they can freely write
+and which will be automatically removed when they have completed.
+.Pp
+For example, snare's GitHub repository is
+.Lk https://github.com/softdevteam/snare .
+If we set up a web hook up for that repository that notifies us of pull request
+events, then the command:
+.Bd -literal -offset 4n
+/path/to/softdevteam/snare pull_request /path/to/json
+.Ed
+.Pp
+will be executed, where:
+.Bl -tag -width Ds
+.It Sy /path/to/softdevteam/snare
+is the per-repo program for the
+.Dq softdevteam
+user and the
+.Dq snare
+repository.
+.It Sy pull_request
+is the type of the GitHub event.
+.It Sy /path/to/json
+is a path to a file containing the complete GitHub JSON for that
+event.
+.El
+.Pp
+The softdevteam/snare per-repo program can then execute whatever it wants.
+In order to work out precisely what event has happened, you will need to read
+.Lk https://developer.github.com/webhooks/ GitHub's webhooks documentation .
+.Sh EXAMPLES
+The minimal recommended
+.Nm
+file is as follows:
+.Bd -literal -offset 4n
+listen = "<address>:<port>";
+github {
+  reposdir = "<path>";
+  match ".*" {
+    email = "<email>";
+    secret = "<secret>";
+  }
+}
+.Ed
+.Pp
+The top-to-bottom evaluation of match blocks allow users to specify defaults
+which are only overridden for specific repositories.
+For example, for the following configuration file:
+.Bd -literal -offset 4n
+listen = "<address>:<port>";
+github {
+  reposdir = "<path>";
+  match ".*" {
+    email = "abc@def.com";
+    secret = "sec";
+  }
+  match "a/b" {
+    email = "ghi@jkl.com";
+  }
+}
+.Ed
+.Pp
+the following repositories will have these settings:
+.Bd -literal -offset 4n
+a/b:
+  queue = sequential
+  timeout = 3600
+  email = "ghi@jkl.com"
+  secret = "sec"
+c/d:
+  queue = sequential
+  timeout = 3600
+  email = "abc@def.com"
+  secret = "sec"
+.Ed
+.Pp
+Users can write per-repo programs in whatever system/language they wish, so
+long as the matching file is marked as executable.
+The following simple example uses shell script to send a list of commits and
+diffs to the address specified in $EMAIL on each
+.Dq push
+event.
+It works for any public GitHub repository:
+.Bd -literal -offset 4n
+#! /bin/sh
+
+set -euf
+EMAIL="someone@something.com"
+
+if [ "$1" != "push" ]; then
+    exit 0
+fi
+
+repo_fullname=`jq .repository.full_name "$2" | tr -d '\"'`
+repo_url=`jq .repository.html_url "$2" | tr -d '\"'`
+before_hash=`jq .before "$2" | tr -d '\"'`
+after_hash=`jq .after "$2" | tr -d '\"'`
+
+git clone "$repo_url" repo
+cd repo
+git log --reverse -p "$before_hash..$after_hash" \\
+  | mail -s "Push to $repo_fullname" "$EMAIL"
+.Ed
+.Pp
+where
+.Lk https://stedolan.github.io/jq/ jq
+is a command-line JSON processor.
+Depending on your needs, you can make this type of script arbitrarily more
+complex and powerful (for example, not cloning afresh on each pull).
+.Pp
+Note that this program is deliberately untrusting of external input: it is
+careful to quote all arguments obtained from JSON; and it uses a fixed
+directory name (
+.Dq repo )
+rather than a file name from JSON that might
+include characters (such as
+.Dq ../.. )
+that would cause the script to leak data about other parts of the file system.
+.Sh SEE ALSO
+.Xr snare 1
+.Sh AUTHORS
+.An -nosplit
+.Xr snare 1
+was written by
+.An Laurence Tratt Lk https://tratt.net/laurie/
