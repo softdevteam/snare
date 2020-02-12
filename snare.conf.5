@@ -110,6 +110,8 @@ optionally specifies an email address to which any
 errors running per-repo programs will be sent (warning: full stderr/stdout
 will be sent, so consider carefully whether these have sensitive information
 or not).
+This uses the `sendmail` command to send email: you should ensure that you have
+installed, set-up, and enabled a suitable `sendmail` clone.
 .It Sy queue = Po evict | parallel | sequential Pc ;
 optionally specifies what to do when multiple requests for the same repository
 are queued at once:

@@ -51,7 +51,9 @@ where:
     they have completed.
  * `email-address` is an email address to which any errors running per-repo
    programs will be sent (warning: full stderr/stdout will be sent, so consider
-   carefully whether these have sensitive information or not).
+   carefully whether these have sensitive information or not). This uses
+   the `sendmail` command to send email: you should ensure that you have
+   installed, set-up, and enabled a suitable `sendmail` clone.
  * `secret";` is the GitHub secret (roughly "password") which guarantees that
    hooks are coming from your GitHub repository and not a malfeasant.
 
