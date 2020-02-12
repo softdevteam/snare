@@ -5,6 +5,15 @@ arbitrary program for that repository informing it of the event -- that program
 can then perform whatever actions it wants.
 
 
+## Install
+
+You will need rustc-1.40.0 or greater installed. You may use `cargo` to build
+snare locally or you may use the `Makefile` to build and install `snare` in
+traditional Unix fashion. `make install` defaults to installing in
+`/usr/local`: you can override this by setting the `PREFIX` variable to another
+path (e.g. `PREFIX=/opt/local make`).
+
+
 ## Quick setup
 
 `snare` has the following command-line format:
