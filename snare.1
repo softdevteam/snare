@@ -10,10 +10,14 @@
 .Op Fl d
 .Sh DESCRIPTION
 .Nm
-is a GitHub webhooks runner.
-When a webhook request comes in via HTTP, it runs an arbitrary program for that
-repository informing it of the event - that program can then perform whatever
-actions it wants.
+is a GitHub webhooks daemon.
+When
+.Nm
+receives a webhook event from
+a given repository, it authenticates the request, and then executes a
+user-defined
+.Dq per-repo program
+with information about the webhook event.
 .Pp
 The options are as follows:
 .Bl -tag -width Ds

@@ -1,8 +1,8 @@
 # snare
 
-`snare` is a simple GitHub webhooks runner. When a request comes in, it runs an
-arbitrary program for that repository informing it of the event -- that program
-can then perform whatever actions it wants.
+`snare` is a GitHub webhooks daemon. When `snare` receives a webhook event from
+a given repository, it authenticates the request, and then executes a
+user-defined "per-repo program" with information about the webhook event.
 
 
 ## Install
