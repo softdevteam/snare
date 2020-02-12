@@ -128,6 +128,11 @@ run as many jobs for this repository in parallel as possible.
 only run one job for this repository at a time.
 Additional jobs will stay on the queue and be executed in FIFO order.
 .El
+.Pp
+Defaults to
+.Sy sequential ,
+which is always safe, though at the possible expense of lower job throughput
+for any given repository.
 .It Sy secret = Qq Em secret ;
 is the optional GitHub secret used to sign the webhook request. This allows
 .Nm
