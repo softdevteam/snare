@@ -1,0 +1,74 @@
+.Dd 2020-02-10
+.Dt SNARE 1
+.Os
+.Sh NAME
+.Nm snare
+.Nd GitHub webhooks runner
+.Sh SYNOPSIS
+.Nm snare
+.Op Fl c Ar config-file
+.Op Fl d
+.Sh DESCRIPTION
+.Nm
+is a GitHub webhooks runner.
+When a webhook request comes in via HTTP, it runs an arbitrary program for that
+repository informing it of the event - that program can then perform whatever
+actions it wants.
+.Pp
+The options are as follows:
+.Bl -tag -width Ds
+.It Fl c Ar config-file
+is a path to a
+.Pa snare.conf
+configuration file.
+If not specified explicitly, the following locations will be searched, in order:
+.Pa ~/.snare.conf ,
+.Pa /etc/snare.conf/ .
+.It Fl d
+tells
+.Nm snare
+not to daemonise: in other words, `snare` stays in the foreground and logs
+errors to stderr.
+This can be useful for debugging.
+.El
+.Sh INTEGRATION WITH GITHUB
+.Nm
+runs an HTTP server which GitHub can send webhook requests to.
+Configuring a webhook for a given GitHub repository is relatively simple: go to
+that repository, then
+.Eo “
+Settings > Webhooks > Add webhook
+.Ec ” .
+For
+.Dq payload ,
+specify
+.Dq http://yourmachine.com:port/ ,
+specify a
+.Dq secret
+(which you will then reuse as the
+.Sy secret
+in
+.Xr snare.conf 5 )
+and then choose which events you wish
+GitHub to deliver.
+.Sh HTTPS/TLS
+.Nm
+runs an HTTP server.
+If you wish, as is recommended, to send your
+webhooks over an encrypted connection, you will need to run a proxy in front of
+.Nm .
+.Sh DIAGNOSTICS
+When run as a daemon,
+.Nm
+logs to
+.Xr syslogd 8
+under the
+.Dq daemon
+facility.
+.Sh SEE ALSO
+.Xr snare.conf 5
+.Sh AUTHORS
+.An -nosplit
+.Nm
+was written by
+.An Laurence Tratt Lk https://tratt.net/laurie/
