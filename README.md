@@ -59,8 +59,9 @@ where:
    carefully whether these have sensitive information or not). This uses
    the `sendmail` command to send email: you should ensure that you have
    installed, set-up, and enabled a suitable `sendmail` clone.
- * `secret";` is the GitHub secret (roughly "password") which guarantees that
-   hooks are coming from your GitHub repository and not a malfeasant.
+ * `secret";` is the GitHub secret used to sign the webhook request and thus
+   allowing `snare` to tell the difference between genuine webhook requests
+   and those from malfeasants.
 
 The [man page for
 snare.conf](https://softdevteam.github.io/snare/snare.conf.5.html) contains the
