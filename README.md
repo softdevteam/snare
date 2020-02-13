@@ -1,17 +1,20 @@
 # snare
 
-`snare` is a simple GitHub webhooks runner. When a request comes in, it runs an
-arbitrary program for that repository informing it of the event -- that program
-can then perform whatever actions it wants.
+`snare` is a GitHub webhooks daemon. When `snare` receives a webhook event from
+a given repository, it authenticates the request, and then executes a
+user-defined "per-repo program" with information about the webhook event.
 
 
 ## Install
 
-You will need rustc-1.40.0 or greater installed. You may use `cargo` to build
-snare locally or you may use the `Makefile` to build and install `snare` in
-traditional Unix fashion. `make install` defaults to installing in
-`/usr/local`: you can override this by setting the `PREFIX` variable to another
-path (e.g. `PREFIX=/opt/local make`).
+The latest stable version can be downloaded from [`snare`'s
+homepage](https://tratt.net/laurie/src/snare/).
+
+To build from source, you will need rustc-1.40.0 or greater installed. You may
+use `cargo` to build snare locally or you may use the `Makefile` to build and
+install `snare` in traditional Unix fashion. `make install` defaults to
+installing in `/usr/local`: you can override this by setting the `PREFIX`
+variable to another path (e.g. `PREFIX=/opt/local make`).
 
 
 ## Quick setup
@@ -68,7 +71,7 @@ where:
    carefully whether these have sensitive information or not). This uses
    the `sendmail` command to send email: you should ensure that you have
    installed, set-up, and enabled a suitable `sendmail` clone.
- * `secret";` is the GitHub secret used to sign the webhook request and thus
+ * `secret` is the GitHub secret used to sign the webhook request and thus
    allowing `snare` to tell the difference between genuine webhook requests
    and those from malfeasants.
 
