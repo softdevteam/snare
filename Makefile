@@ -17,8 +17,10 @@ install:
 
 distrib:
 	test "X`git status --porcelain`" = "X"
-	@read v?'snare version: ' && mkdir snare-$$v && \
-      cp -rp Cargo.lock Cargo.toml COPYRIGHT LICENSE-APACHE LICENSE-MIT \
+	@read v?'snare version: ' \
+	  && mkdir snare-$$v \
+	  && cp -rp Cargo.lock Cargo.toml COPYRIGHT LICENSE-APACHE LICENSE-MIT \
 	    Makefile CHANGES.md README.md build.rs snare.1 snare.conf.5 \
-		snare.conf.example src snare-$$v && \
-	  tar cfz snare-$$v.tgz snare-$$v && rm -rf snare-$$v
+	    snare.conf.example src snare-$$v \
+	  && tar cfz snare-$$v.tgz snare-$$v \
+	  && rm -rf snare-$$v
