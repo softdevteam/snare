@@ -60,6 +60,11 @@ async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>,
         }
     };
 
+    if !valid_github_username(&owner) {
+        *res.status_mut() = StatusCode::BAD_REQUEST;
+        return Ok(res);
+    }
+
     let conf = snare.conf.lock().unwrap();
     let (rconf, secret) = conf.github.repoconfig(&owner, &repo);
 
@@ -177,5 +182,72 @@ async fn parse(req: Request<Body>) -> Result<(Bytes, String, String, String), ()
     match (owner_json.as_str(), repo_json.as_str()) {
         (Some(o), Some(r)) => Ok((pl, json_str, o.to_owned(), r.to_owned())),
         _ => Err(()),
+    }
+}
+
+/// Is `n` a valid GitHub username?
+fn valid_github_username(n: &str) -> bool {
+    // You can see the rules by going to https://github.com/join, typing in something incorrect and
+    // then being told the rules.
+
+    // Usernames must be at least one, and at most 39, characters long.
+    if n.is_empty() || n.len() > 39 {
+        return false;
+    }
+
+    // Usernames cannot start or end with a hyphen.
+    if n.starts_with('-') || n.ends_with('-') {
+        return false;
+    }
+
+    // Usernames cannot contain double hypens.
+    if n.contains("--") {
+        return false;
+    }
+
+    // All characters must be [a-zA-Z0-9-].
+    n.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn github_username() {
+        assert!(!valid_github_username(""));
+        assert!(valid_github_username("a"));
+        assert!(!valid_github_username("-a"));
+        assert!(!valid_github_username("-a-"));
+        assert!(!valid_github_username("a-"));
+
+        assert!(valid_github_username(
+            "123456789012345678901234567890123456789"
+        ));
+        assert!(!valid_github_username(
+            "1234567890123456789012345678901234567890"
+        ));
+        assert!(!valid_github_username(
+            "12345678901234567890123456789012345678-"
+        ));
+        assert!(!valid_github_username(
+            "-23456789012345678901234567890123456780"
+        ));
+
+        assert!(valid_github_username("a-b"));
+        assert!(!valid_github_username("a--b"));
+
+        assert!(valid_github_username("A"));
+
+        let mut s = String::new();
+        for i in 0..255 {
+            let c = char::from(i);
+            if c.is_ascii_alphanumeric() {
+                continue;
+            }
+            s.clear();
+            s.push(c);
+            assert!(!valid_github_username(&s));
+        }
     }
 }
