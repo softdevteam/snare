@@ -457,7 +457,7 @@ impl JobRunner {
     fn sendemail(&self, email: &Option<String>, mut file: &File) {
         if let Some(ref toaddr) = email {
             let mut buf = Vec::new();
-            buf.extend("Subject: snare error\n\n".as_bytes());
+            buf.extend(b"Subject: snare error\n\n");
             file.seek(SeekFrom::Start(0)).ok();
             file.read_to_end(&mut buf).ok();
 

@@ -92,12 +92,11 @@ impl Snare {
         if self.daemonised {
             // We know that `%s` and `<can't represent as CString>` are both valid C strings, and
             // that neither unwrap() can fail.
-            let fmt = CString::new("%s").unwrap().as_ptr();
+            let fmt = CString::new("%s").unwrap();
             let msg = CString::new(msg)
-                .unwrap_or_else(|_| CString::new("<can't represent as CString>").unwrap())
-                .as_ptr();
+                .unwrap_or_else(|_| CString::new("<can't represent as CString>").unwrap());
             unsafe {
-                syslog(LOG_ERR, fmt, msg);
+                syslog(LOG_ERR, fmt.as_ptr(), msg.as_ptr());
             }
         } else {
             eprintln!("{}", msg);
@@ -123,12 +122,11 @@ impl Snare {
         if self.daemonised {
             // We know that `%s` and `<can't represent as CString>` are both valid C strings, and
             // that neither unwrap() can fail.
-            let fmt = CString::new("%s").unwrap().as_ptr();
+            let fmt = CString::new("%s").unwrap();
             let msg = CString::new(msg)
-                .unwrap_or_else(|_| CString::new("<can't represent as CString>").unwrap())
-                .as_ptr();
+                .unwrap_or_else(|_| CString::new("<can't represent as CString>").unwrap());
             unsafe {
-                syslog(LOG_CRIT, fmt, msg);
+                syslog(LOG_CRIT, fmt.as_ptr(), msg.as_ptr());
             }
         } else {
             eprintln!("{}", msg);
@@ -217,9 +215,7 @@ fn change_user(conf: &Config) {
         },
         None => {
             if Uid::current().is_root() {
-                fatal(&format!(
-                    "The 'user' option must be set if snare is run as root"
-                ));
+                fatal("The 'user' option must be set if snare is run as root");
             }
         }
     }

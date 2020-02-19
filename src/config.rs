@@ -142,7 +142,7 @@ impl Config {
             }
             _ => process::exit(1),
         }
-        let maxjobs = maxjobs.unwrap_or_else(|| num_cpus::get());
+        let maxjobs = maxjobs.unwrap_or_else(num_cpus::get);
         let listen = listen.ok_or_else(|| "A 'listen' address must be specified".to_owned())?;
         let github = github.ok_or_else(|| {
             "A GitHub block with at least a 'repodirs' option must be specified".to_owned()
@@ -378,7 +378,7 @@ fn error_at_span(lexer: &dyn Lexer<StorageT>, span: Span, msg: &str) -> String {
     let ((line_off, col), _) = lexer.line_col(span);
     let code = lexer
         .span_lines_str(span)
-        .split("\n")
+        .split('\n')
         .nth(0)
         .unwrap()
         .trim();

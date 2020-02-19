@@ -128,7 +128,7 @@ fn get_hub_sig(req: &Request<Body>) -> Option<String> {
             Err(_) => None,
         })
         .and_then(|s| s.split('=').nth(1))
-        .and_then(|s| Some(s.to_owned()))
+        .map(|s| s.to_owned())
 }
 
 /// Authenticate this request and if successful return `true` (where "success" also includes "the
@@ -138,13 +138,8 @@ fn authenticate(secret: &SecStr, sig: String, pl: Bytes) -> bool {
     let mut mac = Hmac::<Sha1>::new_varkey(secret.unsecure()).unwrap();
     mac.input(&*pl);
     match hex::decode(sig) {
-        Ok(d) => {
-            if mac.verify(&d).is_ok() {
-                return true;
-            }
-            return false;
-        }
-        Err(_) => return false,
+        Ok(d) => mac.verify(&d).is_ok(),
+        Err(_) => false,
     }
 }
 
