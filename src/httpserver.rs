@@ -60,6 +60,11 @@ async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>,
         }
     };
 
+    if !valid_github_username(&owner) || !valid_github_reponame(&owner) {
+        *res.status_mut() = StatusCode::BAD_REQUEST;
+        return Ok(res);
+    }
+
     let conf = snare.conf.lock().unwrap();
     let (rconf, secret) = conf.github.repoconfig(&owner, &repo);
 
@@ -92,24 +97,23 @@ async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>,
         return Ok(res);
     }
 
-    // We now check that there is a per-repo program for this repository and that we haven't been
-    // tricked into searching for a file outside of the repos dir.
+    // We now check that there is a per-repo program for this repository.
     let mut p = PathBuf::new();
     p.push(&conf.github.reposdir);
+    // The calls to github_valid_username and github_valid_reponame above guarantee that `owner`
+    // and `repo` are safe to put in pathnames.
     p.push(&owner);
     p.push(&repo);
     if let Ok(p) = p.canonicalize() {
         if let Some(s) = p.to_str() {
-            if s.starts_with(&conf.github.reposdir) {
-                let qj = QueueJob::new(s.to_owned(), req_time, event_type, json_str, rconf);
-                (*snare.queue.lock().unwrap()).push_back(qj);
-                *res.status_mut() = StatusCode::OK;
-                // If the write fails, it almost certainly means that the pipe is full i.e. the
-                // runner thread will be notified anyway. If something else happens to have gone
-                // wrong, then we (and the OS) are probably in deep trouble anyway...
-                nix::unistd::write(snare.event_write_fd, &[0]).ok();
-                return Ok(res);
-            }
+            let qj = QueueJob::new(s.to_owned(), req_time, event_type, json_str, rconf);
+            (*snare.queue.lock().unwrap()).push_back(qj);
+            *res.status_mut() = StatusCode::OK;
+            // If the write fails, it almost certainly means that the pipe is full i.e. the runner
+            // thread will be notified anyway. If something else happens to have gone wrong, then
+            // we (and the OS) are probably in deep trouble anyway...
+            nix::unistd::write(snare.event_write_fd, &[0]).ok();
+            return Ok(res);
         }
     }
 
@@ -172,5 +176,118 @@ async fn parse(req: Request<Body>) -> Result<(Bytes, String, String, String), ()
     match (owner_json.as_str(), repo_json.as_str()) {
         (Some(o), Some(r)) => Ok((pl, json_str, o.to_owned(), r.to_owned())),
         _ => Err(()),
+    }
+}
+
+/// Is `n` a valid GitHub username? If this function returns `true` then it is guaranteed that `n`
+/// is safe to use in pathnames.
+fn valid_github_username(n: &str) -> bool {
+    // You can see the rules by going to https://github.com/join, typing in something incorrect and
+    // then being told the rules.
+
+    // Usernames must be at least one, and at most 39, characters long.
+    if n.is_empty() || n.len() > 39 {
+        return false;
+    }
+
+    // Usernames cannot start or end with a hyphen.
+    if n.starts_with('-') || n.ends_with('-') {
+        return false;
+    }
+
+    // Usernames cannot contain double hypens.
+    if n.contains("--") {
+        return false;
+    }
+
+    // All characters must be [a-zA-Z0-9-].
+    n.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
+/// Is `n` a valid GitHub repository name? If this function returns `true` then it is guaranteed that `n`
+/// is safe to use in pathnames.
+fn valid_github_reponame(n: &str) -> bool {
+    // You can see the rules by going to https://github.com/new, typing in something incorrect and
+    // then being told the rules.
+
+    // A repository name must be at least 1, at most 100, characters long.
+    if n.is_empty() || n.len() > 100 {
+        return false;
+    }
+
+    // GitHub disallows repository names "." and ".."
+    if n == "." || n == ".." {
+        return false;
+    }
+
+    // All characters must be [a-zA-Z0-9-.]
+    n.chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn github_username() {
+        assert!(!valid_github_username(""));
+        assert!(valid_github_username("a"));
+        assert!(!valid_github_username("-a"));
+        assert!(!valid_github_username("-a-"));
+        assert!(!valid_github_username("a-"));
+
+        assert!(valid_github_username(
+            "123456789012345678901234567890123456789"
+        ));
+        assert!(!valid_github_username(
+            "1234567890123456789012345678901234567890"
+        ));
+        assert!(!valid_github_username(
+            "12345678901234567890123456789012345678-"
+        ));
+        assert!(!valid_github_username(
+            "-23456789012345678901234567890123456780"
+        ));
+
+        assert!(valid_github_username("a-b"));
+        assert!(!valid_github_username("a--b"));
+
+        assert!(valid_github_username("A"));
+
+        let mut s = String::new();
+        for i in 0..255 {
+            let c = char::from(i);
+            if c.is_ascii_alphanumeric() {
+                continue;
+            }
+            s.clear();
+            s.push(c);
+            assert!(!valid_github_username(&s));
+        }
+    }
+
+    #[test]
+    fn github_reponame() {
+        assert!(!valid_github_reponame(""));
+        assert!(!valid_github_reponame("."));
+        assert!(!valid_github_reponame(".."));
+        assert!(valid_github_reponame("..."));
+
+        assert!(valid_github_reponame("a"));
+        assert!(valid_github_reponame("-"));
+        assert!(valid_github_reponame("_"));
+        assert!(valid_github_reponame("-.-"));
+
+        let mut s = String::new();
+        for i in 0..255 {
+            let c = char::from(i);
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
+                continue;
+            }
+            s.clear();
+            s.push(c);
+            assert!(!valid_github_reponame(&s));
+        }
     }
 }
