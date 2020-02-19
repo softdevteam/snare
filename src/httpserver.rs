@@ -97,24 +97,23 @@ async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>,
         return Ok(res);
     }
 
-    // We now check that there is a per-repo program for this repository and that we haven't been
-    // tricked into searching for a file outside of the repos dir.
+    // We now check that there is a per-repo program for this repository.
     let mut p = PathBuf::new();
     p.push(&conf.github.reposdir);
+    // The calls to github_valid_username and github_valid_reponame above guarantee that `owner`
+    // and `repo` are safe to put in pathnames.
     p.push(&owner);
     p.push(&repo);
     if let Ok(p) = p.canonicalize() {
         if let Some(s) = p.to_str() {
-            if s.starts_with(&conf.github.reposdir) {
-                let qj = QueueJob::new(s.to_owned(), req_time, event_type, json_str, rconf);
-                (*snare.queue.lock().unwrap()).push_back(qj);
-                *res.status_mut() = StatusCode::OK;
-                // If the write fails, it almost certainly means that the pipe is full i.e. the
-                // runner thread will be notified anyway. If something else happens to have gone
-                // wrong, then we (and the OS) are probably in deep trouble anyway...
-                nix::unistd::write(snare.event_write_fd, &[0]).ok();
-                return Ok(res);
-            }
+            let qj = QueueJob::new(s.to_owned(), req_time, event_type, json_str, rconf);
+            (*snare.queue.lock().unwrap()).push_back(qj);
+            *res.status_mut() = StatusCode::OK;
+            // If the write fails, it almost certainly means that the pipe is full i.e. the runner
+            // thread will be notified anyway. If something else happens to have gone wrong, then
+            // we (and the OS) are probably in deep trouble anyway...
+            nix::unistd::write(snare.event_write_fd, &[0]).ok();
+            return Ok(res);
         }
     }
 
@@ -185,7 +184,8 @@ async fn parse(req: Request<Body>) -> Result<(Bytes, String, String, String), ()
     }
 }
 
-/// Is `n` a valid GitHub username?
+/// Is `n` a valid GitHub username? If this function returns `true` then it is guaranteed that `n`
+/// is safe to use in pathnames.
 fn valid_github_username(n: &str) -> bool {
     // You can see the rules by going to https://github.com/join, typing in something incorrect and
     // then being told the rules.
@@ -209,7 +209,8 @@ fn valid_github_username(n: &str) -> bool {
     n.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
-/// Is `n` a valid GitHub repository name?
+/// Is `n` a valid GitHub repository name? If this function returns `true` then it is guaranteed that `n`
+/// is safe to use in pathnames.
 fn valid_github_reponame(n: &str) -> bool {
     // You can see the rules by going to https://github.com/new, typing in something incorrect and
     // then being told the rules.
