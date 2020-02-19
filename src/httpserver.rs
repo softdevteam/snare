@@ -28,8 +28,15 @@ async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>,
     let req_time = Instant::now();
     let event_type = match req.headers().get("X-GitHub-Event") {
         Some(hv) => match hv.to_str() {
-            Ok(s) if valid_github_event(s) => s.to_owned(),
-            Ok(_) | Err(_) => {
+            Ok(s) => {
+                if !valid_github_event(s) {
+                    snare.error(&format!("Invalid GitHub event type '{}'.", s));
+                    *res.status_mut() = StatusCode::BAD_REQUEST;
+                    return Ok(res);
+                }
+                s.to_owned()
+            }
+            Err(_) => {
                 *res.status_mut() = StatusCode::BAD_REQUEST;
                 return Ok(res);
             }
@@ -60,7 +67,12 @@ async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>,
         }
     };
 
-    if !valid_github_ownername(&owner) || !valid_github_reponame(&owner) {
+    if !valid_github_ownername(&owner) {
+        snare.error(&format!("Invalid GitHub owner '{}'.", &owner));
+        *res.status_mut() = StatusCode::BAD_REQUEST;
+        return Ok(res);
+    } else if !valid_github_reponame(&repo) {
+        snare.error(&format!("Invalid GitHub repository '{}'.", &repo));
         *res.status_mut() = StatusCode::BAD_REQUEST;
         return Ok(res);
     }
