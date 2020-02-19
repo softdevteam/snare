@@ -60,7 +60,7 @@ async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>,
         }
     };
 
-    if !valid_github_username(&owner) {
+    if !valid_github_username(&owner) || !valid_github_reponame(&owner) {
         *res.status_mut() = StatusCode::BAD_REQUEST;
         return Ok(res);
     }
@@ -209,6 +209,26 @@ fn valid_github_username(n: &str) -> bool {
     n.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
+/// Is `n` a valid GitHub repository name?
+fn valid_github_reponame(n: &str) -> bool {
+    // You can see the rules by going to https://github.com/new, typing in something incorrect and
+    // then being told the rules.
+
+    // A repository name must be at least 1, at most 100, characters long.
+    if n.is_empty() || n.len() > 100 {
+        return false;
+    }
+
+    // GitHub disallows repository names "." and ".."
+    if n == "." || n == ".." {
+        return false;
+    }
+
+    // All characters must be [a-zA-Z0-9-.]
+    n.chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -248,6 +268,30 @@ mod test {
             s.clear();
             s.push(c);
             assert!(!valid_github_username(&s));
+        }
+    }
+
+    #[test]
+    fn github_reponame() {
+        assert!(!valid_github_reponame(""));
+        assert!(!valid_github_reponame("."));
+        assert!(!valid_github_reponame(".."));
+        assert!(valid_github_reponame("..."));
+
+        assert!(valid_github_reponame("a"));
+        assert!(valid_github_reponame("-"));
+        assert!(valid_github_reponame("_"));
+        assert!(valid_github_reponame("-.-"));
+
+        let mut s = String::new();
+        for i in 0..255 {
+            let c = char::from(i);
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
+                continue;
+            }
+            s.clear();
+            s.push(c);
+            assert!(!valid_github_reponame(&s));
         }
     }
 }
