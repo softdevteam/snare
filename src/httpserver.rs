@@ -192,14 +192,14 @@ async fn parse(req: Request<Body>) -> Result<(Bytes, String, String, String), ()
 }
 
 /// Is `t` a valid GitHub event type? If this function returns `true` then it is guaranteed that `t`
-/// is safe to use in pathnames.
+/// is safe to use in file system paths.
 fn valid_github_event(t: &str) -> bool {
     // All current event types are [a-z_] https://developer.github.com/webhooks/
     !t.is_empty() && t.chars().all(|c| c.is_ascii_lowercase() || c == '_')
 }
 
 /// Is `n` a valid GitHub ownername? If this function returns `true` then it is guaranteed that `n`
-/// is safe to use in pathnames.
+/// is safe to use in file system paths.
 fn valid_github_ownername(n: &str) -> bool {
     // You can see the rules by going to https://github.com/join, typing in something incorrect and
     // then being told the rules.
@@ -224,7 +224,7 @@ fn valid_github_ownername(n: &str) -> bool {
 }
 
 /// Is `n` a valid GitHub repository name? If this function returns `true` then it is guaranteed that `n`
-/// is safe to use in pathnames.
+/// is safe to use in filesystem paths.
 fn valid_github_reponame(n: &str) -> bool {
     // You can see the rules by going to https://github.com/new, typing in something incorrect and
     // then being told the rules.
