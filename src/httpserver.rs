@@ -28,7 +28,14 @@ async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>,
     let req_time = Instant::now();
     let event_type = match req.headers().get("X-GitHub-Event") {
         Some(hv) => match hv.to_str() {
-            Ok(s) => s.to_owned(),
+            Ok(s) => {
+                if !valid_github_event(s) {
+                    snare.error(&format!("Invalid GitHub event type '{}'.", s));
+                    *res.status_mut() = StatusCode::BAD_REQUEST;
+                    return Ok(res);
+                }
+                s.to_owned()
+            }
             Err(_) => {
                 *res.status_mut() = StatusCode::BAD_REQUEST;
                 return Ok(res);
@@ -60,7 +67,12 @@ async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>,
         }
     };
 
-    if !valid_github_username(&owner) || !valid_github_reponame(&owner) {
+    if !valid_github_ownername(&owner) {
+        snare.error(&format!("Invalid GitHub owner '{}'.", &owner));
+        *res.status_mut() = StatusCode::BAD_REQUEST;
+        return Ok(res);
+    } else if !valid_github_reponame(&repo) {
+        snare.error(&format!("Invalid GitHub repository '{}'.", &repo));
         *res.status_mut() = StatusCode::BAD_REQUEST;
         return Ok(res);
     }
@@ -100,7 +112,7 @@ async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>,
     // We now check that there is a per-repo program for this repository.
     let mut p = PathBuf::new();
     p.push(&conf.github.reposdir);
-    // The calls to github_valid_username and github_valid_reponame above guarantee that `owner`
+    // The calls to github_valid_ownername and github_valid_reponame above guarantee that `owner`
     // and `repo` are safe to put in pathnames.
     p.push(&owner);
     p.push(&repo);
@@ -179,23 +191,30 @@ async fn parse(req: Request<Body>) -> Result<(Bytes, String, String, String), ()
     }
 }
 
-/// Is `n` a valid GitHub username? If this function returns `true` then it is guaranteed that `n`
-/// is safe to use in pathnames.
-fn valid_github_username(n: &str) -> bool {
+/// Is `t` a valid GitHub event type? If this function returns `true` then it is guaranteed that `t`
+/// is safe to use in file system paths.
+fn valid_github_event(t: &str) -> bool {
+    // All current event types are [a-z_] https://developer.github.com/webhooks/
+    !t.is_empty() && t.chars().all(|c| c.is_ascii_lowercase() || c == '_')
+}
+
+/// Is `n` a valid GitHub ownername? If this function returns `true` then it is guaranteed that `n`
+/// is safe to use in file system paths.
+fn valid_github_ownername(n: &str) -> bool {
     // You can see the rules by going to https://github.com/join, typing in something incorrect and
     // then being told the rules.
 
-    // Usernames must be at least one, and at most 39, characters long.
+    // Owner names must be at least one, and at most 39, characters long.
     if n.is_empty() || n.len() > 39 {
         return false;
     }
 
-    // Usernames cannot start or end with a hyphen.
+    // Owner names cannot start or end with a hyphen.
     if n.starts_with('-') || n.ends_with('-') {
         return false;
     }
 
-    // Usernames cannot contain double hypens.
+    // Owner names cannot contain double hypens.
     if n.contains("--") {
         return false;
     }
@@ -205,7 +224,7 @@ fn valid_github_username(n: &str) -> bool {
 }
 
 /// Is `n` a valid GitHub repository name? If this function returns `true` then it is guaranteed that `n`
-/// is safe to use in pathnames.
+/// is safe to use in filesystem paths.
 fn valid_github_reponame(n: &str) -> bool {
     // You can see the rules by going to https://github.com/new, typing in something incorrect and
     // then being told the rules.
@@ -230,30 +249,50 @@ mod test {
     use super::*;
 
     #[test]
-    fn github_username() {
-        assert!(!valid_github_username(""));
-        assert!(valid_github_username("a"));
-        assert!(!valid_github_username("-a"));
-        assert!(!valid_github_username("-a-"));
-        assert!(!valid_github_username("a-"));
+    fn github_event() {
+        assert!(!valid_github_event(""));
+        assert!(valid_github_event("a"));
+        assert!(valid_github_event("check_run"));
+        assert!(!valid_github_event("check-run"));
+        assert!(!valid_github_event("check-run2"));
 
-        assert!(valid_github_username(
+        let mut s = String::new();
+        for i in 0..255 {
+            let c = char::from(i);
+            if c.is_ascii_lowercase() || c == '_' {
+                continue;
+            }
+            s.clear();
+            s.push(c);
+            assert!(!valid_github_event(&s));
+        }
+    }
+
+    #[test]
+    fn github_ownername() {
+        assert!(!valid_github_ownername(""));
+        assert!(valid_github_ownername("a"));
+        assert!(!valid_github_ownername("-a"));
+        assert!(!valid_github_ownername("-a-"));
+        assert!(!valid_github_ownername("a-"));
+
+        assert!(valid_github_ownername(
             "123456789012345678901234567890123456789"
         ));
-        assert!(!valid_github_username(
+        assert!(!valid_github_ownername(
             "1234567890123456789012345678901234567890"
         ));
-        assert!(!valid_github_username(
+        assert!(!valid_github_ownername(
             "12345678901234567890123456789012345678-"
         ));
-        assert!(!valid_github_username(
+        assert!(!valid_github_ownername(
             "-23456789012345678901234567890123456780"
         ));
 
-        assert!(valid_github_username("a-b"));
-        assert!(!valid_github_username("a--b"));
+        assert!(valid_github_ownername("a-b"));
+        assert!(!valid_github_ownername("a--b"));
 
-        assert!(valid_github_username("A"));
+        assert!(valid_github_ownername("A"));
 
         let mut s = String::new();
         for i in 0..255 {
@@ -263,7 +302,7 @@ mod test {
             }
             s.clear();
             s.push(c);
-            assert!(!valid_github_username(&s));
+            assert!(!valid_github_ownername(&s));
         }
     }
 
