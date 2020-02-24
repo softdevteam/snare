@@ -43,8 +43,8 @@ The minimal recommended configuration file is:
 listen = "<ip-address>:<port>";
 
 github {
-  reposdir = "<path>";
   match ".*" {
+    cmd = "/path/to/prps/%o/%r %e %j";
     email = "<email-address>";
     secret = "<secret>";
   }
@@ -53,19 +53,20 @@ github {
 
 where:
 
-  * `ip-address` is either an IPv4 or IPv6 address and `port` a port on which an
-    HTTP server will listen.
-  * `path` is the directory where the per-repo programs are stored. For a
-    repository `repo` owned by `user` the command:
+ * `ip-address` is either an IPv4 or IPv6 address and `port` a port on which an
+   HTTP server will listen.
+ * `cmd` is the command that will be executed when a webhook is received. In
+   this case, `/path/to/prps` is a path to a directory where per-repo programs
+   are stored. For a repository `repo` owned by `user` the command:
 
-      ```
-      <reposdir>/<user>/<repo> <event> <path to GitHub JSON>
-      ```
+     ```
+     /path/to/prps/<user>/<repo> <event> <path-to-github-json>
+     ```
 
-    will be run. The file `<repo>` must be executable. Note that per-repo
-    programs are run with their current working directory set to a temporary
-    directory to which they can freely write and which will be automatically
-    removed when they have completed.
+   will be run. The file `<repo>` must be executable. Note that commands are
+   run with their current working directory set to a temporary directory to
+   which they can freely write and which will be automatically removed when
+   they have completed.
  * `email-address` is an email address to which any errors running per-repo
    programs will be sent (warning: full stderr/stdout will be sent, so consider
    carefully whether these have sensitive information or not). This uses
@@ -80,14 +81,15 @@ snare.conf](https://softdevteam.github.io/snare/snare.conf.5.html) contains the
 complete list of configuration options.
 
 
-## Per-repo programs
+## Commands
 
-When using snare, the *per-repo programs* do the actual work of executing
-specific actions for a given repository.  For example, `snare`'s GitHub
+`snare` can be used to run any command runnable from the Unix shell. The
+"per-repo program" model as documented above is one common way of doing this.
+For example, `snare`'s GitHub
 repository is
 [`https://github.com/softdevteam/snare`](https://github.com/softdevteam/snare).
 If we set up a web hook up for that repository that notifies us of pull request
-events, then the command:
+events, then with the above `snare.conf`, the command:
 
 ```sh
 <repo-programs-dir>/softdevteam/snare pull_request /path/to/json
@@ -95,7 +97,7 @@ events, then the command:
 
 will be executed, where: `pull_request` is the name of the GitHub event; and
 `/path/to/json` is a path to a file containing the complete GitHub JSON for
-that event. The `softdevteam_snare` program can then execute whatever it wants.
+that event. The `softdevteam/snare` program can then execute whatever it wants.
 In order to work out precisely what event has happened, you will need to read
 [GitHub's webhooks documentation](https://developer.github.com/webhooks/).
 

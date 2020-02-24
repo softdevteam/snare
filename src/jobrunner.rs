@@ -1,5 +1,6 @@
 use std::{
     convert::TryInto,
+    env,
     error::Error,
     fs::{self, remove_file, File},
     io::{Read, Seek, SeekFrom, Write},
@@ -22,7 +23,11 @@ use nix::{
 use tempfile::{tempdir, tempfile, NamedTempFile, TempDir};
 use whoami::{hostname, username};
 
-use crate::{config::RepoConfig, queue::QueueJob, Snare};
+use crate::{
+    config::{GitHub, RepoConfig},
+    queue::QueueJob,
+    Snare,
+};
 
 /// The size of the temporary read buffer in bytes. Should be >= PIPE_BUF for performance reasons.
 const READBUF: usize = 8 * 1024;
@@ -32,6 +37,8 @@ const WAIT_TIMEOUT: i32 = 1;
 
 struct JobRunner {
     snare: Arc<Snare>,
+    /// The shell used to run jobs.
+    shell: String,
     /// The maximum number of jobs we will run at any one point. Note that this may not necessarily
     /// be the same value as snare.conf.maxjobs.
     maxjobs: usize,
@@ -48,6 +55,7 @@ struct JobRunner {
 
 impl JobRunner {
     fn new(snare: Arc<Snare>) -> Result<Self, Box<dyn Error>> {
+        let shell = env::var("SHELL")?;
         let maxjobs = snare.conf.lock().unwrap().maxjobs;
         assert!(maxjobs <= (std::usize::MAX - 1) / 2);
         let mut running = Vec::with_capacity(maxjobs);
@@ -56,6 +64,7 @@ impl JobRunner {
         pollfds.resize_with(maxjobs * 2 + 1, || PollFd::new(-1, PollFlags::empty()));
         Ok(JobRunner {
             snare,
+            shell,
             maxjobs,
             running,
             num_running: 0,
@@ -258,10 +267,10 @@ impl JobRunner {
             if self.num_running == self.maxjobs && !queue.is_empty() {
                 return false;
             }
-            let pjob = queue.pop(|path| {
+            let pjob = queue.pop(|repo_id| {
                 self.running.iter().any(|jobslot| {
                     if let Some(job) = jobslot {
-                        path == job.path
+                        repo_id == job.repo_id
                     } else {
                         false
                     }
@@ -306,8 +315,17 @@ impl JobRunner {
     /// Try starting the `QueueJob` `qj` running, returning `Ok(Job)` upon success. If for
     /// temporary reasons that is not possible, the job is returned via `Err(Some(QueueJob))` so
     /// that it can be put back in the queue and retried later. If `Err(None)` is returned then the
-    /// job could not be run for permanent reasons and the job is consumed.
+    /// job could not be run (either because there is no command, or because there was a permanent
+    /// error, and the user was appropriately notified) and the job is consumed.
     fn try_job(&mut self, qj: QueueJob) -> Result<Job, Option<QueueJob>> {
+        let raw_cmd = match &qj.rconf.cmd {
+            Some(c) => c,
+            None => {
+                // There is no command to run.
+                return Err(None);
+            }
+        };
+
         // Write the JSON to an unnamed temporary file.
         let json_path = match NamedTempFile::new() {
             Ok(tfile) => match tfile.into_temp_path().keep() {
@@ -336,9 +354,16 @@ impl JobRunner {
             if let Ok(stderrout_file) = tempfile() {
                 if set_nonblock(stderrout_file.as_raw_fd()).is_ok() {
                     if let Some(json_path_str) = json_path.to_str() {
-                        let child = match Command::new(qj.path.clone())
-                            .arg(qj.event_type)
-                            .arg(json_path_str)
+                        let cmd = cmd_replace(
+                            raw_cmd,
+                            &qj.event_type,
+                            &qj.owner,
+                            &qj.repo,
+                            &json_path_str,
+                        );
+                        let child = match Command::new(&self.shell)
+                            .arg("-c")
+                            .arg(cmd)
                             .current_dir(tempdir.path())
                             .stderr(process::Stdio::piped())
                             .stdout(process::Stdio::piped())
@@ -379,7 +404,7 @@ impl JobRunner {
                             .unwrap();
 
                         return Ok(Job {
-                            path: qj.path,
+                            repo_id: qj.repo_id,
                             finish_by,
                             child,
                             _tempdir: tempdir,
@@ -487,9 +512,60 @@ impl JobRunner {
     }
 }
 
+/// Take the string `raw_cmd` and return a string with the following replaced:
+///   * `%e` with `event_type`
+///   * `%o` with `owner`
+///   * `%r` with `repo`
+///   * `%j` with `json_type`
+///
+/// Note that `raw_cmd` *must* have been validated by config::GitHub::verify_cmd_str or undefined
+/// behaviour will occur.
+fn cmd_replace(
+    raw_cmd: &str,
+    event_type: &str,
+    owner: &str,
+    repo: &str,
+    json_path: &str,
+) -> String {
+    debug_assert!(GitHub::verify_cmd_str(raw_cmd).is_ok());
+    // Except in the presence of '%%'s, the output string will be at least as long as the input
+    // string, so starting at that capacity is a reasonable heuristic.
+    let mut cmd = String::with_capacity(raw_cmd.len());
+    let mut i = 0;
+    while i < raw_cmd.len() {
+        if raw_cmd[i..].starts_with("%") {
+            let c = raw_cmd[i + 1..].chars().nth(0).unwrap();
+            if c == 'e' {
+                cmd.push_str(event_type);
+                i += 2;
+            } else if c == 'o' {
+                cmd.push_str(owner);
+                i += 2;
+            } else if c == 'r' {
+                cmd.push_str(repo);
+                i += 2;
+            } else if c == 'j' {
+                cmd.push_str(json_path);
+                i += 2;
+            } else if c == '%' {
+                cmd.push('%');
+                i += 2;
+            } else {
+                unreachable!();
+            }
+        } else {
+            let c = raw_cmd[i..].chars().nth(0).unwrap();
+            cmd.push(c);
+            i += c.len_utf8();
+        }
+    }
+    cmd
+}
+
 struct Job {
-    /// The path of the script we are running.
-    path: String,
+    /// The repo identifier: this is used to determine if a given repository already has jobs
+    /// runnings on it or not. Typically of the form "provider/owner/repo".
+    repo_id: String,
     /// What time must this Job have completed by? If it exceeds this time, it will be terminated.
     finish_by: Instant,
     /// The child process itself.
@@ -522,4 +598,19 @@ pub(crate) fn attend(snare: Arc<Snare>) -> Result<(), Box<dyn Error>> {
     let mut rn = JobRunner::new(snare)?;
     thread::spawn(move || rn.attend());
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_cmd_replace() {
+        assert_eq!(cmd_replace("", "", "", "", ""), "");
+        assert_eq!(cmd_replace("a", "", "", "", ""), "a");
+        assert_eq!(
+            cmd_replace("%% %e %o %r %j %%", "ee", "oo", "rr", "jj"),
+            "% ee oo rr jj %"
+        );
+    }
 }

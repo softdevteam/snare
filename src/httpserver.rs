@@ -1,4 +1,4 @@
-use std::{convert::Infallible, path::PathBuf, sync::Arc, time::Instant};
+use std::{convert::Infallible, sync::Arc, time::Instant};
 
 use crypto_mac::Mac;
 use hex;
@@ -109,29 +109,14 @@ async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>,
         return Ok(res);
     }
 
-    // We now check that there is a per-repo program for this repository.
-    let mut p = PathBuf::new();
-    p.push(&conf.github.reposdir);
-    // The calls to github_valid_ownername and github_valid_reponame above guarantee that `owner`
-    // and `repo` are safe to put in pathnames.
-    p.push(&owner);
-    p.push(&repo);
-    if let Ok(p) = p.canonicalize() {
-        if let Some(s) = p.to_str() {
-            let qj = QueueJob::new(s.to_owned(), req_time, event_type, json_str, rconf);
-            (*snare.queue.lock().unwrap()).push_back(qj);
-            *res.status_mut() = StatusCode::OK;
-            // If the write fails, it almost certainly means that the pipe is full i.e. the runner
-            // thread will be notified anyway. If something else happens to have gone wrong, then
-            // we (and the OS) are probably in deep trouble anyway...
-            nix::unistd::write(snare.event_write_fd, &[0]).ok();
-            return Ok(res);
-        }
-    }
-
-    snare.error(&format!("No per-repo program {}/{}.", owner, repo));
-    // We couldn't find a per-repo program for this request.
-    *res.status_mut() = StatusCode::BAD_REQUEST;
+    let repo_id = format!("github/{}/{}", owner, repo);
+    let qj = QueueJob::new(repo_id, owner, repo, req_time, event_type, json_str, rconf);
+    (*snare.queue.lock().unwrap()).push_back(qj);
+    *res.status_mut() = StatusCode::OK;
+    // If the write fails, it almost certainly means that the pipe is full i.e. the runner
+    // thread will be notified anyway. If something else happens to have gone wrong, then
+    // we (and the OS) are probably in deep trouble anyway...
+    nix::unistd::write(snare.event_write_fd, &[0]).ok();
     Ok(res)
 }
 

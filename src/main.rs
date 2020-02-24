@@ -1,4 +1,4 @@
-//! snare is a GitHub webhooks runner. Architecturally it is split in two:
+//! snare is a GitHub webhooks daemon. Architecturally it is split in two:
 //!   * The `httpserver` listens for incoming hooks, checks that they're valid, and adds them to a
 //!     `Queue`.
 //!   * The `jobrunner` pops elements from the `Queue` and runs them in parallel.
