@@ -1,10 +1,4 @@
-use std::{
-    fs::{canonicalize, read_to_string},
-    net::SocketAddr,
-    path::PathBuf,
-    process,
-    str::FromStr,
-};
+use std::{fs::read_to_string, net::SocketAddr, path::PathBuf, process, str::FromStr};
 
 use crypto_mac::{InvalidKeyLength, Mac};
 use hmac::Hmac;
@@ -145,7 +139,7 @@ impl Config {
         let maxjobs = maxjobs.unwrap_or_else(num_cpus::get);
         let listen = listen.ok_or_else(|| "A 'listen' address must be specified".to_owned())?;
         let github = github.ok_or_else(|| {
-            "A GitHub block with at least a 'repodirs' option must be specified".to_owned()
+            "A GitHub block with at least a 'cmd' option must be specified".to_owned()
         })?;
 
         Ok(Config {
@@ -158,8 +152,6 @@ impl Config {
 }
 
 pub struct GitHub {
-    /// A *fully canonicalised* path to the directory containing per-repo programs.
-    pub reposdir: String,
     pub matches: Vec<Match>,
 }
 
@@ -169,33 +161,12 @@ impl GitHub {
         options: Vec<config_ast::ProviderOption>,
         ast_matches: Vec<config_ast::Match>,
     ) -> Result<Self, String> {
-        let mut reposdir = None;
         let mut matches = vec![Match::default()];
 
         for option in options {
             match option {
                 config_ast::ProviderOption::ReposDir(span) => {
-                    if reposdir.is_some() {
-                        return Err(error_at_span(
-                            lexer,
-                            span,
-                            "Mustn't specify 'reposdir' more than once",
-                        ));
-                    }
-
-                    let reposdir_str = lexer.span_str(span);
-                    let reposdir_str = &reposdir_str[1..reposdir_str.len() - 1];
-                    reposdir = Some(match canonicalize(reposdir_str) {
-                        Ok(p) => match p.to_str() {
-                            Some(s) => s.to_owned(),
-                            None => {
-                                return Err(format!("'{}': can't convert to string", &reposdir_str))
-                            }
-                        },
-                        Err(e) => {
-                            return Err(format!("'{}': {}", reposdir_str, e));
-                        }
-                    });
+                    return Err(error_at_span(lexer, span, "Replace:\n  GitHub { reposdir = \"/path/to/reposdir\"; }\nwith:\n  GitHub {\n    match \".*\" {\n      cmd = \"/path/to/reposdir/%o/%r %e %j\";\n    }\n  }"));
                 }
             }
         }
@@ -213,12 +184,26 @@ impl GitHub {
                     ))
                 }
             };
+            let mut cmd = None;
             let mut email = None;
             let mut queuekind = None;
             let mut secret = None;
             let mut timeout = None;
             for opt in m.options {
                 match opt {
+                    config_ast::PerRepoOption::Cmd(span) => {
+                        if cmd.is_some() {
+                            return Err(error_at_span(
+                                lexer,
+                                span,
+                                "Mustn't specify 'cmd' more than once",
+                            ));
+                        }
+                        let cmd_str = lexer.span_str(span);
+                        let cmd_str = &cmd_str[1..cmd_str.len() - 1];
+                        GitHub::verify_cmd_str(cmd_str)?;
+                        cmd = Some(cmd_str.to_owned());
+                    }
                     config_ast::PerRepoOption::Email(span) => {
                         if email.is_some() {
                             return Err(error_at_span(
@@ -292,6 +277,7 @@ impl GitHub {
             }
             matches.push(Match {
                 re,
+                cmd,
                 email,
                 queuekind,
                 secret,
@@ -299,11 +285,27 @@ impl GitHub {
             });
         }
 
-        if let Some(reposdir) = reposdir {
-            Ok(GitHub { reposdir, matches })
-        } else {
-            Err("A directory for per-repo programs must be specified".to_owned())
+        Ok(GitHub { matches })
+    }
+
+    /// Verify that the `cmd` string is valid, returning `Ok())` if so or `Err(String)` if not.
+    pub(crate) fn verify_cmd_str(cmd: &str) -> Result<(), String> {
+        let mut i = 0;
+        while i < cmd.len() {
+            if cmd[i..].starts_with("%") {
+                if i + 1 == cmd.len() {
+                    return Err("'cmd' cannot end with a single '%'.".to_owned());
+                }
+                let c = cmd[i + 1..].chars().nth(0).unwrap();
+                if !(c == 'e' || c == 'o' || c == 'r' || c == 'j' || c == '%') {
+                    return Err(format!("Unknown '%' modifier '{}.", c));
+                }
+                i += 2;
+            } else {
+                i += 1;
+            }
         }
+        Ok(())
     }
 
     /// Return a `RepoConfig` for `owner/repo`. Note that if the user reloads the config later,
@@ -313,12 +315,16 @@ impl GitHub {
     /// the heap.
     pub fn repoconfig<'a>(&'a self, owner: &str, repo: &str) -> (RepoConfig, Option<&'a SecStr>) {
         let s = format!("{}/{}", owner, repo);
+        let mut cmd = None;
         let mut email = None;
         let mut queuekind = None;
         let mut secret = None;
         let mut timeout = None;
         for m in &self.matches {
             if m.re.is_match(&s) {
+                if let Some(ref c) = m.cmd {
+                    cmd = Some(c.clone());
+                }
                 if let Some(ref e) = m.email {
                     email = Some(e.clone());
                 }
@@ -337,6 +343,7 @@ impl GitHub {
         // unwraps() are safe.
         (
             RepoConfig {
+                cmd,
                 email,
                 queuekind: queuekind.unwrap(),
                 timeout: timeout.unwrap(),
@@ -349,6 +356,8 @@ impl GitHub {
 pub struct Match {
     /// The regular expression to match against full owner/repo names.
     re: Regex,
+    /// The command to run (note that this contains escape characters such as %o and %r).
+    cmd: Option<String>,
     /// An optional email address to send errors to.
     email: Option<String>,
     /// The queue kind.
@@ -365,6 +374,7 @@ impl Default for Match {
         let re = Regex::new(".*").unwrap();
         Match {
             re,
+            cmd: None,
             email: None,
             queuekind: Some(QueueKind::Sequential),
             secret: None,
@@ -393,6 +403,7 @@ fn error_at_span(lexer: &dyn Lexer<StorageT>, span: Span, msg: &str) -> String {
 
 /// The configuration for a given repository.
 pub struct RepoConfig {
+    pub cmd: Option<String>,
     pub email: Option<String>,
     pub queuekind: QueueKind,
     pub timeout: u64,
@@ -403,4 +414,20 @@ pub enum QueueKind {
     Evict,
     Parallel,
     Sequential,
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_verify_cmd_string() {
+        assert!(GitHub::verify_cmd_str("").is_ok());
+        assert!(GitHub::verify_cmd_str("a").is_ok());
+        assert!(GitHub::verify_cmd_str("%% %e %o %r %j %%").is_ok());
+        assert!(GitHub::verify_cmd_str("%%").is_ok());
+        assert!(GitHub::verify_cmd_str("%").is_err());
+        assert!(GitHub::verify_cmd_str("a%").is_err());
+        assert!(GitHub::verify_cmd_str("%a").is_err());
+    }
 }

@@ -5,6 +5,7 @@
 \{ "{"
 \} "}"
 ; ";"
+cmd "CMD"
 email "EMAIL"
 evict "EVICT"
 github "GITHUB"

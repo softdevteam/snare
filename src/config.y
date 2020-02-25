@@ -51,7 +51,8 @@ PerRepoOptions -> Result<Vec<PerRepoOption>, ()>:
   ;
 
 PerRepoOption -> Result<PerRepoOption, ()>:
-    "EMAIL" "=" "STRING" ";" { Ok(PerRepoOption::Email(map_err($3)?)) }
+    "CMD" "=" "STRING" ";" { Ok(PerRepoOption::Cmd(map_err($3)?)) }
+  | "EMAIL" "=" "STRING" ";" { Ok(PerRepoOption::Email(map_err($3)?)) }
   | "QUEUE" "=" QueueKind ";" {
         let (span, qkind) = $3?;
         Ok(PerRepoOption::Queue(span, qkind))
