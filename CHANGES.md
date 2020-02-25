@@ -32,6 +32,9 @@
   guaranteed to satisfy the regular expression `[a-zA-Z0-9._-]+` and not to be
   the strings `.` or `..`.
 
+* String escapes (e.g. "\"") are now properly processed (previously they were
+  ignored).
+
 
 # snare 0.1.0 (2020-02-13)
 

@@ -11,7 +11,7 @@ sh rustup.sh --default-host x86_64-unknown-linux-gnu --default-toolchain stable 
 export PATH=`pwd`/.cargo/bin/:$PATH
 
 cargo fmt --all -- --check
-cargo build
+cargo test
 
 mkdir test_install
 PREFIX=test_install make install
