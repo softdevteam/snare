@@ -73,9 +73,8 @@ impl Config {
                                     "Mustn't specify 'listen' more than once",
                                 ));
                             }
-                            let listen_str = lexer.span_str(span);
-                            let listen_str = &listen_str[1..listen_str.len() - 1];
-                            match SocketAddr::from_str(listen_str) {
+                            let listen_str = unescape_str(lexer.span_str(span));
+                            match SocketAddr::from_str(&listen_str) {
                                 Ok(l) => listen = Some(l),
                                 Err(e) => {
                                     return Err(error_at_span(
@@ -127,9 +126,8 @@ impl Config {
                                     "Mustn't specify 'user' more than once",
                                 ));
                             }
-                            let user_str = lexer.span_str(span);
-                            let user_str = &user_str[1..user_str.len() - 1];
-                            user = Some(user_str.to_owned());
+                            let user_str = unescape_str(lexer.span_str(span));
+                            user = Some(user_str);
                         }
                     }
                 }
@@ -172,8 +170,7 @@ impl GitHub {
         }
 
         for m in ast_matches {
-            let re_str = lexer.span_str(m.re);
-            let re_str = format!("^{}$", &re_str[1..re_str.len() - 1]);
+            let re_str = format!("^{}$", unescape_str(lexer.span_str(m.re)));
             let re = match Regex::new(&re_str) {
                 Ok(re) => re,
                 Err(e) => {
@@ -199,10 +196,9 @@ impl GitHub {
                                 "Mustn't specify 'cmd' more than once",
                             ));
                         }
-                        let cmd_str = lexer.span_str(span);
-                        let cmd_str = &cmd_str[1..cmd_str.len() - 1];
-                        GitHub::verify_cmd_str(cmd_str)?;
-                        cmd = Some(cmd_str.to_owned());
+                        let cmd_str = unescape_str(lexer.span_str(span));
+                        GitHub::verify_cmd_str(&cmd_str)?;
+                        cmd = Some(cmd_str);
                     }
                     config_ast::PerRepoOption::Email(span) => {
                         if email.is_some() {
@@ -212,9 +208,8 @@ impl GitHub {
                                 "Mustn't specify 'email' more than once",
                             ));
                         }
-                        let email_str = lexer.span_str(span);
-                        let email_str = &email_str[1..email_str.len() - 1];
-                        email = Some(email_str.to_owned());
+                        let email_str = unescape_str(lexer.span_str(span));
+                        email = Some(email_str);
                     }
                     config_ast::PerRepoOption::Queue(span, qkind) => {
                         if queuekind.is_some() {
@@ -238,8 +233,7 @@ impl GitHub {
                                 "Mustn't specify 'secret' more than once",
                             ));
                         }
-                        let sec_str = lexer.span_str(span);
-                        let sec_str = &sec_str[1..sec_str.len() - 1];
+                        let sec_str = unescape_str(lexer.span_str(span));
 
                         // Looking at the Hmac code, it seems that a key can't actually be of an
                         // invalid length despite the API suggesting that it can be... We're
@@ -353,6 +347,34 @@ impl GitHub {
     }
 }
 
+/// Take a quoted string from the config file and unescape it (i.e. strip the start and end quote
+/// (") characters and process any escape characters in the string.)
+fn unescape_str(us: &str) -> String {
+    // The regex in config.l should have guaranteed that strings start and finish with a
+    // quote character.
+    debug_assert!(us.starts_with('"') && us.ends_with('"'));
+    let mut s = String::new();
+    // We iterate over all characters except the opening and closing quote characters.
+    let mut i = '"'.len_utf8();
+    while i < us.len() - '"'.len_utf8() {
+        let c = us[i..].chars().nth(0).unwrap();
+        if c == '\\' {
+            // The regex in config.l should have guaranteed that there are no unescaped quote (")
+            // characters, but we check here just to be sure.
+            debug_assert!(i < us.len() - '"'.len_utf8());
+            i += 1;
+            let c2 = us[i..].chars().nth(0).unwrap();
+            debug_assert!(c2 == '"' || c2 == '\\');
+            s.push(c2);
+            i += c.len_utf8() + c2.len_utf8();
+        } else {
+            s.push(c);
+            i += c.len_utf8();
+        }
+    }
+    s
+}
+
 pub struct Match {
     /// The regular expression to match against full owner/repo names.
     re: Regex,
@@ -429,5 +451,13 @@ mod test {
         assert!(GitHub::verify_cmd_str("%").is_err());
         assert!(GitHub::verify_cmd_str("a%").is_err());
         assert!(GitHub::verify_cmd_str("%a").is_err());
+    }
+
+    #[test]
+    fn test_unescape_string() {
+        assert_eq!(unescape_str("\"\""), "");
+        assert_eq!(unescape_str("\"a\""), "a");
+        assert_eq!(unescape_str("\"a\\\"\""), "a\"");
+        assert_eq!(unescape_str("\"\\\\\""), "\\");
     }
 }
