@@ -533,7 +533,7 @@ fn cmd_replace(
     let mut cmd = String::with_capacity(raw_cmd.len());
     let mut i = 0;
     while i < raw_cmd.len() {
-        if raw_cmd[i..].starts_with("%") {
+        if raw_cmd[i..].starts_with('%') {
             let c = raw_cmd[i + 1..].chars().nth(0).unwrap();
             if c == 'e' {
                 cmd.push_str(event_type);
