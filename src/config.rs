@@ -161,12 +161,8 @@ impl GitHub {
     ) -> Result<Self, String> {
         let mut matches = vec![Match::default()];
 
-        for option in options {
-            match option {
-                config_ast::ProviderOption::ReposDir(span) => {
-                    return Err(error_at_span(lexer, span, "Replace:\n  GitHub { reposdir = \"/path/to/reposdir\"; }\nwith:\n  GitHub {\n    match \".*\" {\n      cmd = \"/path/to/reposdir/%o/%r %e %j\";\n    }\n  }"));
-                }
-            }
+        if let Some(config_ast::ProviderOption::ReposDir(span)) = options.get(0) {
+            return Err(error_at_span(lexer, *span, "Replace:\n  GitHub { reposdir = \"/path/to/reposdir\"; }\nwith:\n  GitHub {\n    match \".*\" {\n      cmd = \"/path/to/reposdir/%o/%r %e %j\";\n    }\n  }"));
         }
 
         for m in ast_matches {
@@ -286,7 +282,7 @@ impl GitHub {
     pub(crate) fn verify_cmd_str(cmd: &str) -> Result<(), String> {
         let mut i = 0;
         while i < cmd.len() {
-            if cmd[i..].starts_with("%") {
+            if cmd[i..].starts_with('%') {
                 if i + 1 == cmd.len() {
                     return Err("'cmd' cannot end with a single '%'.".to_owned());
                 }
