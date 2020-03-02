@@ -1,5 +1,6 @@
 [package]
 name = "snare"
+description = "GitHub webhooks runner daemon"
 version = "0.2.0"
 homepage = "https://tratt.net/laurie/src/snare/"
 repository = "https://github.com/softdevteam/lang_tester/"
