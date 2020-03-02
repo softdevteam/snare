@@ -1,4 +1,4 @@
-# snare 0.2.0 (xxxx-xx-xx)
+# snare 0.2.0 (2020-03-02)
 
 ## Breaking changes
 
