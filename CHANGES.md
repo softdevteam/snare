@@ -1,4 +1,4 @@
-# snare 0.2.0 (xxxx-xx-xx)
+# snare 0.2.0 (2020-03-02)
 
 ## Breaking changes
 
@@ -32,7 +32,7 @@
   guaranteed to satisfy the regular expression `[a-zA-Z0-9._-]+` and not to be
   the strings `.` or `..`.
 
-* String escapes (e.g. "\"") are now properly processed (previously they were
+* String escapes (e.g. `"\""`) are now properly processed (previously they were
   ignored).
 
 
