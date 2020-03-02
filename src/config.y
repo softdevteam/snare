@@ -67,6 +67,11 @@ QueueKind -> Result<(Span, QueueKind), ()>:
   | "SEQUENTIAL" { Ok((map_err($1)?, QueueKind::Sequential)) }
   ;
 
+// This rule helps turn lexing errors into parsing errors.
+Unknown -> ():
+    "UNKNOWN" { }
+  ;
+
 %%
 use lrpar::{Lexeme, Span};
 

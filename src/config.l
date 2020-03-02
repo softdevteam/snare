@@ -20,4 +20,5 @@ sequential "SEQUENTIAL"
 timeout "TIMEOUT"
 user "USER"
 //.*?$ ;
-[ \t\n\r]* ;
+[ \t\n\r]+ ;
+. "UNKNOWN"
