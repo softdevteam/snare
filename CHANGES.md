@@ -32,7 +32,7 @@
   guaranteed to satisfy the regular expression `[a-zA-Z0-9._-]+` and not to be
   the strings `.` or `..`.
 
-* String escapes (e.g. "\"") are now properly processed (previously they were
+* String escapes (e.g. `"\""`) are now properly processed (previously they were
   ignored).
 
 
