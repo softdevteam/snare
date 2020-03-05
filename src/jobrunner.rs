@@ -220,7 +220,7 @@ impl JobRunner {
                     if exited {
                         if !exited_success {
                             let job = &self.running[i].as_ref().unwrap();
-                            self.sendemail(&job.rconf.email, &job.stderrout_file);
+                            self.sendemail(&job, &job.stderrout_file);
                         }
                         remove_file(&self.running[i].as_ref().unwrap().json_path).ok();
                         self.running[i] = None;
@@ -479,10 +479,10 @@ impl JobRunner {
     }
 
     /// If the user has specified an email address, send the contents of
-    fn sendemail(&self, email: &Option<String>, mut file: &File) {
-        if let Some(ref toaddr) = email {
+    fn sendemail(&self, job: &Job, mut file: &File) {
+        if let Some(ref toaddr) = job.rconf.email {
             let mut buf = Vec::new();
-            buf.extend(b"Subject: snare error\n\n");
+            buf.extend(format!("Subject: snare error: {}\n\n", job.repo_id).as_bytes());
             file.seek(SeekFrom::Start(0)).ok();
             file.read_to_end(&mut buf).ok();
 
@@ -563,8 +563,10 @@ fn cmd_replace(
 }
 
 struct Job {
-    /// The repo identifier: this is used to determine if a given repository already has jobs
-    /// runnings on it or not. Typically of the form "provider/owner/repo".
+    /// The repo identifier. This is used:
+    ///   * to determine if a given repository already has jobs running or not.
+    ///   * as part of the subject line when emailing about a failed job.
+    /// Typically of the form "provider/owner/repo".
     repo_id: String,
     /// What time must this Job have completed by? If it exceeds this time, it will be terminated.
     finish_by: Instant,
