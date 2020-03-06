@@ -36,14 +36,13 @@ use nix::{
 };
 use signal_hook;
 use tokio::runtime::Runtime;
-use users::{get_current_uid, get_user_by_name, get_user_by_uid, os::unix::UserExt};
+use users::{get_user_by_name, os::unix::UserExt};
 
 use config::Config;
 use queue::Queue;
 
-/// Default locations to look for `snare.conf`: `~/` will be automatically converted to the current
-/// user's home directory.
-const SNARE_CONF_SEARCH: &[&str] = &["~/.snare.conf", "/etc/snare.conf"];
+/// Default location of `snare.conf`.
+const SNARE_CONF_PATH: &str = "/etc/snare/snare.conf";
 
 pub(crate) struct Snare {
     /// Are we currently running as a daemon?
@@ -163,22 +162,9 @@ fn fatal_err<E: Into<Box<dyn Error>> + Display>(msg: &str, err: E) -> ! {
 
 /// Try to find a `snare.conf` file.
 fn search_snare_conf() -> Option<PathBuf> {
-    for cnd in SNARE_CONF_SEARCH {
-        if cnd.starts_with("~/") {
-            let mut homedir =
-                match get_user_by_uid(get_current_uid()).map(|x| x.home_dir().to_path_buf()) {
-                    Some(p) => p,
-                    None => continue,
-                };
-            homedir.push(&cnd[2..]);
-            if homedir.is_file() {
-                return Some(homedir);
-            }
-        }
-        let p = PathBuf::from(cnd);
-        if p.is_file() {
-            return Some(p);
-        }
+    let p = PathBuf::from(SNARE_CONF_PATH);
+    if p.is_file() {
+        return Some(p);
     }
     None
 }

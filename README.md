@@ -28,9 +28,8 @@ Usage: snare [-c <config-path>] [-d]
 where:
 
  * `-c <config-path>` is a path to a `snare.conf` configuration file. If not
-   specified explicitly, the following locations will be searched, in order:
-     * `~/.snare.conf`
-     * `/etc/snare.conf/`
+   specified, `snare` will assume the configuration file is located at
+   `/etc/snare/snare.conf`.
  * `-d` tells `snare` *not* to daemonise: in other words, `snare` stays in the
    foreground. This can be useful for debugging.
 
