@@ -456,4 +456,15 @@ mod test {
         assert_eq!(unescape_str("\"a\\\"\""), "a\"");
         assert_eq!(unescape_str("\"\\\\\""), "\\");
     }
+
+    #[test]
+    fn test_example_conf() {
+        let mut p = PathBuf::new();
+        p.push(env!("CARGO_MANIFEST_DIR"));
+        p.push("snare.conf.example");
+        match Config::from_path(&p) {
+            Ok(_) => (),
+            Err(e) => panic!("{:?}", e),
+        }
+    }
 }
