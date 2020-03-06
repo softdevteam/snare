@@ -57,10 +57,10 @@ where:
    HTTP server will listen.
  * `cmd` is the command that will be executed when a webhook is received. In
    this case, `/path/to/prps` is a path to a directory where per-repo programs
-   are stored. For a repository `repo` owned by `user` the command:
+   are stored. For a repository `repo` owned by `owner` the command:
 
      ```
-     /path/to/prps/<user>/<repo> <event> <path-to-github-json>
+     /path/to/prps/<owner>/<repo> <event> <path-to-github-json>
      ```
 
    will be run. The file `<repo>` must be executable. Note that commands are
