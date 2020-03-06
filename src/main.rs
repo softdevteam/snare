@@ -188,18 +188,6 @@ fn change_user(conf: &Config) {
     match conf.user {
         Some(ref user) => match get_user_by_name(&user) {
             Some(u) => {
-                if let Err(e) = set_current_dir(u.home_dir()) {
-                    fatal_err(
-                        &format!(
-                            "Can't chdir to user '{}'s homedir {}",
-                            user,
-                            u.home_dir()
-                                .to_str()
-                                .unwrap_or("<can't represent as unicode>")
-                        ),
-                        e,
-                    );
-                }
                 let gid = Gid::from_raw(u.primary_group_id());
                 if let Err(e) = setresgid(gid, gid, gid) {
                     fatal_err(&format!("Can't switch to group '{}'", user), e);
@@ -259,11 +247,13 @@ pub fn main() {
 
     change_user(&conf);
 
+    set_current_dir("/").unwrap_or_else(|_| fatal("Can't chdir to '/'"));
     if daemonise {
         if let Err(e) = daemon(true, false) {
             fatal_err("Couldn't daemonise: {}", e);
         }
     }
+
     let progname = match current_exe() {
         Ok(p) => p
             .file_name()
