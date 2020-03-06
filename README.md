@@ -7,13 +7,15 @@ user-defined "per-repo program" with information about the webhook event.
 
 ## Install
 
-The latest stable version can be downloaded from [`snare`'s
-homepage](https://tratt.net/laurie/src/snare/).
+`snare` requires rustc-1.40.0 or greater.
 
-To build from source, you will need rustc-1.40.0 or greater installed. You may
-use `cargo` to build snare locally or you may use the `Makefile` to build and
-install `snare` in traditional Unix fashion. `make install` defaults to
-installing in `/usr/local`: you can override this by setting the `PREFIX`
+To install `snare` on a per-user basis, use `cargo install snare`.
+
+To install `snare` globally and/or for packaging purposes, download the latest
+stable version from [`snare`'s homepage](https://tratt.net/laurie/src/snare/).
+You may use `cargo` to build snare locally or you may use the `Makefile` to
+build and install `snare` in traditional Unix fashion. `make install` defaults
+to installing in `/usr/local`: you can override this by setting the `PREFIX`
 variable to another path (e.g. `PREFIX=/opt/local make`).
 
 
