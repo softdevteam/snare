@@ -1,3 +1,21 @@
+# snare 0.3.0 (2020-03-06)
+
+## Breaking changes
+
+* `snare` now only searches for a configuration file at
+  `/etc/snare/snare.conf`; as before, you can specify an alternative location
+  for `snare.conf` via the `-c` option.
+
+* `snare` always changes its CWD to `/` (previously CWD was only altered if a
+  `user` was specified).
+
+
+## Minor changes
+
+* When a command fails, the email sent now contains the owner and repository
+  name in the subject.
+
+
 # snare 0.2.0 (2020-03-02)
 
 ## Breaking changes
