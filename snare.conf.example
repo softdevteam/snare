@@ -5,10 +5,13 @@
 listen = "<address>:<port>";
 
 github {
-  // The path to the directory where your per-repo programs are stored.
-  reposdir = "<path>";
-
   match ".*" {
+    // For each webhook coming in, this will execute the command:
+    //   /path/to/prps/<owner>/<repo> <event> <path-to-github-json>
+    // where the file <repo> must be executable. Note that snare guarantees
+    // that all the '%' substitutions are shell-safe.
+    cmd = "/path/to/prps/%o/%r %e %j";
+
     // An email address where errors in running commands will be sent (warning:
     // full stderr/stdout will be sent, so consider carefully whether these
     // have sensitive information or not). This uses the `sendmail` command to
