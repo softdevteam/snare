@@ -1,4 +1,4 @@
-# snare 0.3.0 (2020-03-06)
+# snare 0.3.0 (2020-03-08)
 
 ## Breaking changes
 
