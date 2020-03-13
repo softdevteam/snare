@@ -108,7 +108,8 @@ In order to work out precisely what event has happened, you will need to read
 Users can write per-repo programs in whatever system/language they wish, so
 long as the matching file is marked as executable. The following simple example
 uses shell script to send a list of commits and diffs to the address specified
-in `$EMAIL` on each `push` event. It works for any public GitHub repository:
+in `$EMAIL` on each `push` to master. It works for any public GitHub
+repository:
 
 ```sh
 #! /bin/sh
@@ -121,6 +122,11 @@ EMAILS="someone@example.com someone.else@example.com"
 REPO_URL="git@github.com:owner/repo.git"
 
 if [ "$1" != "push" ]; then
+    exit 0
+fi
+
+ref=`jq .ref "$2" | tr -d '\"'`
+if [ "$ref" != "refs/heads/master" ]; then
     exit 0
 fi
 
