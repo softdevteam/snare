@@ -261,7 +261,11 @@ It works for any public GitHub repository:
 #! /bin/sh
 
 set -euf
-EMAIL="someone@something.com"
+
+# A list of email addresses separated by spaces.
+EMAILS="someone@example.com someone.else@example.com"
+# A GitHub URL either https or git.
+REPO_URL="git@github.com:owner/repo.git"
 
 if [ "$1" != "push" ]; then
     exit 0
@@ -272,10 +276,12 @@ repo_url=`jq .repository.html_url "$2" | tr -d '\"'`
 before_hash=`jq .before "$2" | tr -d '\"'`
 after_hash=`jq .after "$2" | tr -d '\"'`
 
-git clone "$repo_url" repo
+git clone "$REPO_URL" repo
 cd repo
-git log --reverse -p "$before_hash..$after_hash" \\
-  | mail -s "Push to $repo_fullname" "$EMAIL"
+for email in `echo "$EMAILS"`; do
+    git log --reverse -p "$before_hash..$after_hash" \\
+      | mail -s "Push to $repo_fullname" "$email"
+done
 .Ed
 .Pp
 where
