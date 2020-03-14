@@ -17,7 +17,6 @@ use std::{
     error::Error,
     ffi::CString,
     fmt::Display,
-    io::{stderr, Write},
     os::unix::io::RawFd,
     path::{Path, PathBuf},
     process,
@@ -202,7 +201,7 @@ fn usage(prog: &str) -> ! {
         .file_name()
         .map(|x| x.to_str().unwrap_or("snare"))
         .unwrap_or("snare");
-    writeln!(&mut stderr(), "Usage: {} [-c <config-path>] [-d]", leaf).ok();
+    eprintln!("Usage: {} [-c <config-path>] [-d]", leaf);
     process::exit(1)
 }
 
