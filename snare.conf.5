@@ -255,7 +255,7 @@ The following program expects to be called with an event and a JSON path (i.e.
 and uses shell script to send a list of commits and diffs to the address
 specified in $EMAIL on each
 .Dq push
-event.
+to master.
 It works for any public GitHub repository:
 .Bd -literal -offset 4n
 #! /bin/sh
@@ -268,6 +268,11 @@ EMAILS="someone@example.com someone.else@example.com"
 REPO_URL="git@github.com:owner/repo.git"
 
 if [ "$1" != "push" ]; then
+    exit 0
+fi
+
+ref=`jq .ref "$2" | tr -d '\"'`
+if [ "$ref" != "refs/heads/master" ]; then
     exit 0
 fi
 
