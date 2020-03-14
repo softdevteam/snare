@@ -18,7 +18,7 @@ use std::{
     ffi::CString,
     fmt::Display,
     os::unix::io::RawFd,
-    path::{Path, PathBuf},
+    path::PathBuf,
     process,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -170,6 +170,17 @@ fn change_user(conf: &Config) {
     }
 }
 
+fn progname() -> String {
+    match current_exe() {
+        Ok(p) => p
+            .file_name()
+            .map(|x| x.to_str().unwrap_or("snare"))
+            .unwrap_or("snare")
+            .to_owned(),
+        Err(_) => "snare".to_owned(),
+    }
+}
+
 /// Exit with a fatal error.
 fn fatal(daemonised: bool, msg: &str) -> ! {
     if daemonised {
@@ -192,20 +203,14 @@ fn fatal_err<E: Into<Box<dyn Error>> + Display>(daemonised: bool, msg: &str, err
     fatal(daemonised, &format!("{}: {}", msg, err));
 }
 
-/// Print out program usage then exit. This function *must* not be called after daemonisation.
-fn usage(prog: &str) -> ! {
-    let path = Path::new(prog);
-    let leaf = path
-        .file_name()
-        .map(|x| x.to_str().unwrap_or("snare"))
-        .unwrap_or("snare");
-    eprintln!("Usage: {} [-c <config-path>] [-d]", leaf);
+/// Print out program usage then exit. This function must not be called after daemonisation.
+fn usage() -> ! {
+    eprintln!("Usage: {} [-c <config-path>] [-d]", progname());
     process::exit(1)
 }
 
 pub fn main() {
     let args: Vec<String> = env::args().collect();
-    let prog = &args[0];
     let matches = Options::new()
         .optmulti("c", "config", "Path to snare.conf.", "<conf-path>")
         .optflag(
@@ -215,9 +220,9 @@ pub fn main() {
         )
         .optflag("h", "help", "")
         .parse(&args[1..])
-        .unwrap_or_else(|_| usage(prog));
+        .unwrap_or_else(|_| usage());
     if matches.opt_present("h") {
-        usage(prog);
+        usage();
     }
 
     let daemonise = !matches.opt_present("d");
@@ -237,21 +242,13 @@ pub fn main() {
         }
     }
 
-    let progname = match current_exe() {
-        Ok(p) => p
-            .file_name()
-            .map(|x| x.to_str().unwrap_or("snare"))
-            .unwrap_or("snare")
-            .to_owned(),
-        Err(_) => "snare".to_owned(),
-    };
     // openlog's first argument `ident` is incompletely specified, but in practise we have to
     // assume that syslog merely stores a pointer to the string (i.e. it doesn't copy the string).
     // We thus deliberately leak memory here in order that the pointer always points to valid
     // memory. The unwrap() here is ugly, but if it fails, it means we've run out of memory, so
     // it's neither likely to fail nor, if it does, can we do anything to clear up from it.
     let progname =
-        Box::into_raw(CString::new(progname).unwrap().into_boxed_c_str()) as *const c_char;
+        Box::into_raw(CString::new(progname()).unwrap().into_boxed_c_str()) as *const c_char;
     unsafe {
         openlog(progname, LOG_CONS, LOG_DAEMON);
     }
