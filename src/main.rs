@@ -143,22 +143,6 @@ impl Snare {
     }
 }
 
-/// Exit with a fatal error. This function should only be called before the [`Snare`](::Snare)
-/// struct is created.
-fn fatal(msg: &str) -> ! {
-    if msg.ends_with('.') {
-        eprintln!("{}", msg);
-    } else {
-        eprintln!("{}.", msg);
-    }
-    process::exit(1);
-}
-
-/// Exit with a fatal error, printing the contents of `err`.
-fn fatal_err<E: Into<Box<dyn Error>> + Display>(msg: &str, err: E) -> ! {
-    fatal(&format!("{}: {}", msg, err));
-}
-
 /// Try to find a `snare.conf` file.
 fn search_snare_conf() -> Option<PathBuf> {
     let p = PathBuf::from(SNARE_CONF_PATH);
@@ -192,6 +176,22 @@ fn change_user(conf: &Config) {
             }
         }
     }
+}
+
+/// Exit with a fatal error. This function should only be called before the [`Snare`](::Snare)
+/// struct is created.
+fn fatal(msg: &str) -> ! {
+    if msg.ends_with('.') {
+        eprintln!("{}", msg);
+    } else {
+        eprintln!("{}.", msg);
+    }
+    process::exit(1);
+}
+
+/// Exit with a fatal error, printing the contents of `err`.
+fn fatal_err<E: Into<Box<dyn Error>> + Display>(msg: &str, err: E) -> ! {
+    fatal(&format!("{}: {}", msg, err));
 }
 
 /// Print out program usage then exit.
