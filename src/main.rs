@@ -17,9 +17,8 @@ use std::{
     error::Error,
     ffi::CString,
     fmt::Display,
-    io::{stderr, Write},
     os::unix::io::RawFd,
-    path::{Path, PathBuf},
+    path::PathBuf,
     process,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -118,19 +117,7 @@ impl Snare {
     ///
     /// If `msg` contains a `NUL` byte.
     fn fatal(&self, msg: &str) -> ! {
-        if self.daemonised {
-            // We know that `%s` and `<can't represent as CString>` are both valid C strings, and
-            // that neither unwrap() can fail.
-            let fmt = CString::new("%s").unwrap();
-            let msg = CString::new(msg)
-                .unwrap_or_else(|_| CString::new("<can't represent as CString>").unwrap());
-            unsafe {
-                syslog(LOG_CRIT, fmt.as_ptr(), msg.as_ptr());
-            }
-        } else {
-            eprintln!("{}", msg);
-        }
-        process::exit(1);
+        fatal(self.daemonised, msg);
     }
 
     /// Log `msg` as a fatal error, with extra information in the Rust [`Error`](::Error) `err` and
@@ -144,22 +131,6 @@ impl Snare {
     }
 }
 
-/// Exit with a fatal error. This function should only be called before the [`Snare`](::Snare)
-/// struct is created.
-fn fatal(msg: &str) -> ! {
-    if msg.ends_with('.') {
-        eprintln!("{}", msg);
-    } else {
-        eprintln!("{}.", msg);
-    }
-    process::exit(1);
-}
-
-/// Exit with a fatal error, printing the contents of `err`.
-fn fatal_err<E: Into<Box<dyn Error>> + Display>(msg: &str, err: E) -> ! {
-    fatal(&format!("{}: {}", msg, err));
-}
-
 /// Try to find a `snare.conf` file.
 fn search_snare_conf() -> Option<PathBuf> {
     let p = PathBuf::from(SNARE_CONF_PATH);
@@ -170,45 +141,76 @@ fn search_snare_conf() -> Option<PathBuf> {
 }
 
 /// If the config specified a 'user' then switch to that and update $HOME and $USER appropriately.
+/// This function must not be called after daemonisation.
 fn change_user(conf: &Config) {
     match conf.user {
         Some(ref user) => match get_user_by_name(&user) {
             Some(u) => {
                 let gid = Gid::from_raw(u.primary_group_id());
                 if let Err(e) = setresgid(gid, gid, gid) {
-                    fatal_err(&format!("Can't switch to group '{}'", user), e);
+                    fatal_err(false, &format!("Can't switch to group '{}'", user), e);
                 }
                 let uid = Uid::from_raw(u.uid());
                 if let Err(e) = setresuid(uid, uid, uid) {
-                    fatal_err(&format!("Can't switch to user '{}'", user), e);
+                    fatal_err(false, &format!("Can't switch to user '{}'", user), e);
                 }
                 env::set_var("HOME", u.home_dir());
                 env::set_var("USER", user);
             }
-            None => fatal(&format!("Unknown user '{}'", user)),
+            None => fatal(false, &format!("Unknown user '{}'", user)),
         },
         None => {
             if Uid::current().is_root() {
-                fatal("The 'user' option must be set if snare is run as root");
+                fatal(
+                    false,
+                    "The 'user' option must be set if snare is run as root",
+                );
             }
         }
     }
 }
 
-/// Print out program usage then exit.
-fn usage(prog: &str) -> ! {
-    let path = Path::new(prog);
-    let leaf = path
-        .file_name()
-        .map(|x| x.to_str().unwrap_or("snare"))
-        .unwrap_or("snare");
-    writeln!(&mut stderr(), "Usage: {} [-c <config-path>] [-d]", leaf).ok();
+fn progname() -> String {
+    match current_exe() {
+        Ok(p) => p
+            .file_name()
+            .map(|x| x.to_str().unwrap_or("snare"))
+            .unwrap_or("snare")
+            .to_owned(),
+        Err(_) => "snare".to_owned(),
+    }
+}
+
+/// Exit with a fatal error.
+fn fatal(daemonised: bool, msg: &str) -> ! {
+    if daemonised {
+        // We know that `%s` and `<can't represent as CString>` are both valid C strings, and
+        // that neither unwrap() can fail.
+        let fmt = CString::new("%s").unwrap();
+        let msg = CString::new(msg)
+            .unwrap_or_else(|_| CString::new("<can't represent as CString>").unwrap());
+        unsafe {
+            syslog(LOG_CRIT, fmt.as_ptr(), msg.as_ptr());
+        }
+    } else {
+        eprintln!("{}", msg);
+    }
+    process::exit(1);
+}
+
+/// Exit with a fatal error, printing the contents of `err`.
+fn fatal_err<E: Into<Box<dyn Error>> + Display>(daemonised: bool, msg: &str, err: E) -> ! {
+    fatal(daemonised, &format!("{}: {}", msg, err));
+}
+
+/// Print out program usage then exit. This function must not be called after daemonisation.
+fn usage() -> ! {
+    eprintln!("Usage: {} [-c <config-path>] [-d]", progname());
     process::exit(1)
 }
 
 pub fn main() {
     let args: Vec<String> = env::args().collect();
-    let prog = &args[0];
     let matches = Options::new()
         .optmulti("c", "config", "Path to snare.conf.", "<conf-path>")
         .optflag(
@@ -218,50 +220,42 @@ pub fn main() {
         )
         .optflag("h", "help", "")
         .parse(&args[1..])
-        .unwrap_or_else(|_| usage(prog));
+        .unwrap_or_else(|_| usage());
     if matches.opt_present("h") {
-        usage(prog);
+        usage();
     }
 
     let daemonise = !matches.opt_present("d");
 
     let conf_path = match matches.opt_str("c") {
         Some(p) => PathBuf::from(&p),
-        None => search_snare_conf().unwrap_or_else(|| fatal("Can't find snare.conf")),
+        None => search_snare_conf().unwrap_or_else(|| fatal(false, "Can't find snare.conf")),
     };
-    let conf = Config::from_path(&conf_path).unwrap_or_else(|m| fatal(&m));
+    let conf = Config::from_path(&conf_path).unwrap_or_else(|m| fatal(false, &m));
 
     change_user(&conf);
 
-    set_current_dir("/").unwrap_or_else(|_| fatal("Can't chdir to '/'"));
+    set_current_dir("/").unwrap_or_else(|_| fatal(false, "Can't chdir to '/'"));
     if daemonise {
         if let Err(e) = daemon(true, false) {
-            fatal_err("Couldn't daemonise: {}", e);
+            fatal_err(false, "Couldn't daemonise: {}", e);
         }
     }
 
-    let progname = match current_exe() {
-        Ok(p) => p
-            .file_name()
-            .map(|x| x.to_str().unwrap_or("snare"))
-            .unwrap_or("snare")
-            .to_owned(),
-        Err(_) => "snare".to_owned(),
-    };
     // openlog's first argument `ident` is incompletely specified, but in practise we have to
     // assume that syslog merely stores a pointer to the string (i.e. it doesn't copy the string).
     // We thus deliberately leak memory here in order that the pointer always points to valid
     // memory. The unwrap() here is ugly, but if it fails, it means we've run out of memory, so
     // it's neither likely to fail nor, if it does, can we do anything to clear up from it.
     let progname =
-        Box::into_raw(CString::new(progname).unwrap().into_boxed_c_str()) as *const c_char;
+        Box::into_raw(CString::new(progname()).unwrap().into_boxed_c_str()) as *const c_char;
     unsafe {
         openlog(progname, LOG_CONS, LOG_DAEMON);
     }
 
     let (event_read_fd, event_write_fd) = match pipe2(OFlag::O_NONBLOCK) {
         Ok(p) => p,
-        Err(e) => fatal_err("Can't create pipe", e),
+        Err(e) => fatal_err(daemonise, "Can't create pipe", e),
     };
     let sighup_occurred = Arc::new(AtomicBool::new(false));
     {
@@ -273,7 +267,7 @@ pub fn main() {
                 nix::unistd::write(event_write_fd, &[0]).ok();
             })
         } {
-            fatal_err("Can't install SIGHUP handler", e);
+            fatal_err(daemonise, "Can't install SIGHUP handler", e);
         }
     }
 
