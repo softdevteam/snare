@@ -15,6 +15,7 @@ edition = "2018"
 cfgrammar = "0.6"
 lrlex = "0.6"
 lrpar = "0.6"
+rerun_except = "0.1"
 
 [dependencies]
 cfgrammar = "0.6"
