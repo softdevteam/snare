@@ -1,3 +1,8 @@
+//! The job runner. This is a single thread which runs multiple commands as child processes. There
+//! are two types of commands: "normal" and "error" commands. Error commands are only executed if a
+//! normal command fails. For normal commands, we track stderr/stdout and exit status; for error
+//! commands we track only exit status.
+
 use std::{
     collections::HashMap,
     convert::TryInto,
@@ -217,7 +222,20 @@ impl JobRunner {
                     if exited {
                         if !exited_success {
                             let job = &self.running[i].as_ref().unwrap();
-                            self.run_errorcmd(&job);
+                            if job.is_errorcmd {
+                                self.snare.error(&format!(
+                                    "errorcmd exited unsuccessfully: {}",
+                                    job.rconf.errorcmd.as_ref().unwrap()
+                                ));
+                            } else {
+                                if let Some(errorchild) = self.run_errorcmd(&job) {
+                                    let mut job = &mut self.running[i].as_mut().unwrap();
+                                    job.child = errorchild;
+                                    job.is_errorcmd = true;
+                                    num_waiting += 1;
+                                    continue;
+                                }
+                            }
                         }
                         remove_file(&self.running[i].as_ref().unwrap().json_path).ok();
                         self.running[i] = None;
@@ -401,6 +419,7 @@ impl JobRunner {
                             .unwrap();
 
                         return Ok(Job {
+                            is_errorcmd: false,
                             repo_id: qj.repo_id,
                             event_type: qj.event_type,
                             owner: qj.owner,
@@ -479,7 +498,7 @@ impl JobRunner {
     }
 
     /// If the user has specified an email address, send the contents of
-    fn run_errorcmd(&self, job: &Job) {
+    fn run_errorcmd(&self, job: &Job) -> Option<Child> {
         if let Some(raw_errorcmd) = &job.rconf.errorcmd {
             let errorcmd = errorcmd_replace(
                 raw_errorcmd,
@@ -489,7 +508,7 @@ impl JobRunner {
                 &job.json_path.as_os_str().to_str().unwrap(),
                 &job.stderrout.path().as_os_str().to_str().unwrap(),
             );
-            let mut child = match Command::new(&self.shell)
+            match Command::new(&self.shell)
                 .arg("-c")
                 .arg(&errorcmd)
                 .current_dir(job.tempdir.path())
@@ -498,20 +517,13 @@ impl JobRunner {
                 .stdin(process::Stdio::null())
                 .spawn()
             {
-                Ok(c) => c,
-                Err(e) => {
-                    self.snare
-                        .error_err(&format!("Can't spawn '{}'", errorcmd), e);
-                    return;
-                }
-            };
-            match child.wait() {
-                Ok(status) if status.success() => (),
-                _ => self
+                Ok(c) => return Some(c),
+                Err(e) => self
                     .snare
-                    .error(&format!("Non-zero exit when executing '{}'", errorcmd)),
+                    .error_err(&format!("Can't spawn '{}'", errorcmd), e),
             }
         }
+        None
     }
 }
 
@@ -594,6 +606,8 @@ fn replace(s: &str, modifiers: HashMap<char, &str>) -> String {
 }
 
 struct Job {
+    /// Set to `false` if this is a normal command and `true` if it is an error command.
+    is_errorcmd: bool,
     /// The repo identifier. This is used to determine if a given repository already has jobs
     /// running or not. Typically of the form "provider/owner/repo".
     repo_id: String,
