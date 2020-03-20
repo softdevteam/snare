@@ -362,7 +362,7 @@ fn unescape_str(us: &str) -> String {
             let c2 = us[i..].chars().nth(0).unwrap();
             debug_assert!(c2 == '"' || c2 == '\\');
             s.push(c2);
-            i += c.len_utf8() + c2.len_utf8();
+            i += c2.len_utf8();
         } else {
             s.push(c);
             i += c.len_utf8();
@@ -454,6 +454,7 @@ mod test {
         assert_eq!(unescape_str("\"\""), "");
         assert_eq!(unescape_str("\"a\""), "a");
         assert_eq!(unescape_str("\"a\\\"\""), "a\"");
+        assert_eq!(unescape_str("\"a\\\"b\""), "a\"b");
         assert_eq!(unescape_str("\"\\\\\""), "\\");
     }
 
