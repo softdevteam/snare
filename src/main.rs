@@ -3,8 +3,8 @@
 //!     `Queue`.
 //!   * The `jobrunner` pops elements from the `Queue` and runs them in parallel.
 //! These two components run as two different threads: the `httpserver` writes a solitary byte to
-//! an "event pipe" to wake up the `jobrunner` when the queue has new elements. This allows the
-//! `jobrunner` to use a single interface for listen for completed jobs as well as new jobs.
+//! an "event pipe" to wake up the `jobrunner` when the queue has new elements. We also wake up the
+//! `jobrunner` on SIGHUP and SIGCHLD.
 
 mod config;
 mod config_ast;
@@ -268,6 +268,14 @@ pub fn main() {
             })
         } {
             fatal_err(daemonise, "Can't install SIGHUP handler", e);
+        }
+        if let Err(e) = unsafe {
+            signal_hook::register(signal_hook::SIGCHLD, move || {
+                // All functions called in this function must be signal safe. See signal(3).
+                nix::unistd::write(event_write_fd, &[0]).ok();
+            })
+        } {
+            fatal_err(daemonise, "Can't install SIGCHLD handler", e);
         }
     }
 

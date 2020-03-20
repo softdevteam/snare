@@ -79,24 +79,15 @@ impl JobRunner {
         //   * Has the event pipe told us there are new jobs in the queue?
         //   * Are there jobs in the queue from a previous round that we couldn't run yet?
         let mut check_queue = false;
-        // How many jobs have closed stderr/stdout and which we're just waiting to terminate?
-        let mut num_waiting = 0;
         // A scratch buffer used to read from files.
         let mut buf = Box::new([0; READBUF]);
         // The earliest finish_by time of any running process (i.e. the process that will timeout
         // the soonest).
         let mut next_finish_by: Option<Instant> = None;
         loop {
-            // If we're waiting for jobs to die or if there are jobs on the queue we haven't been
-            // able to run for temporary reasons, then wait a short amount of time and try again.
-            // Notice that the second clause is a bit subtle: if there are jobs on the queue, but
-            // we're all running the maximum number of jobs, then there's no point in waking up.
-            let mut timeout = if num_waiting > 0 || (check_queue && self.num_running < self.maxjobs)
-            {
-                WAIT_TIMEOUT * 1000
-            } else {
-                -1
-            };
+            // If there are jobs on the queue we haven't been able to run for temporary reasons,
+            // then wait a short amount of time and try again.
+            let mut timeout = if check_queue { WAIT_TIMEOUT * 1000 } else { -1 };
             // If any processes will exceed their timeout then, if that's shorter than the above
             // timeout, only wait for enough time to pass before we need to send them SIGTERM.
             if let Some(fby) = next_finish_by {
@@ -182,7 +173,6 @@ impl JobRunner {
             //   * If any jobs have exceeded their timeout, send them SIGTERM.
             //   * If there are jobs whose stderr/stdout have closed, keep waiting on them until
             //     they exit.
-            num_waiting = 0;
             next_finish_by = None;
             for i in 0..self.running.len() {
                 if let Some(Job {
@@ -232,7 +222,6 @@ impl JobRunner {
                                     let mut job = &mut self.running[i].as_mut().unwrap();
                                     job.child = errorchild;
                                     job.is_errorcmd = true;
-                                    num_waiting += 1;
                                     continue;
                                 }
                             }
@@ -241,13 +230,12 @@ impl JobRunner {
                         self.running[i] = None;
                         self.num_running -= 1;
                         self.update_pollfds();
-                    } else {
-                        num_waiting += 1;
                     }
                 }
             }
 
-            // Has the HTTP server told us that it's put more jobs into the queue?
+            // Has the HTTP server told us that we should check for new jobs and/or SIGCHLD/SIGHUP
+            // has been received?
             match self.pollfds[self.maxjobs * 2].revents() {
                 Some(flags) if flags == PollFlags::POLLIN => {
                     check_queue = true;
@@ -264,7 +252,7 @@ impl JobRunner {
             }
 
             // Should we check the queue? This could be because we were previously unable to empty
-            // it fully, or because the HTTP server has told us that it's put more jobs there.
+            // it fully, or because the HTTP server has told us that there might be new jobs.
             // However, it's only worth us checking the queue (which requires a lock) if there's
             // space for us to run further jobs.
             if check_queue && self.num_running < self.maxjobs {
