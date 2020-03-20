@@ -12,12 +12,13 @@ github {
     // that all the '%' substitutions are shell-safe.
     cmd = "/path/to/prps/%o/%r %e %j";
 
-    // An email address where errors in running commands will be sent (warning:
-    // full stderr/stdout will be sent, so consider carefully whether these
-    // have sensitive information or not). This uses the `sendmail` command to
-    // send email: you should ensure that you have installed, set-up, and
-    // enabled a suitable `sendmail` clone.
-    email = "someone@example.com";
+    // This command will send an email to "someone@example.com" when an error
+    // occurs. The subject will contain the repository owner and repository
+    // names; the body will contain the full stderr/stdout (you should consider
+    // carefully whether these have sensitive information or not). In order for
+    // this to work, you will need to have installed, set-up, and enabled a
+    // suitable sendmail clone.
+    errorcmd = "cat %s | mailx -s \"snare error: github.com/%o/%r\" someone@example.com";
 
     // The GitHub secret used to sign webhook requests.
     secret = "<secret>";

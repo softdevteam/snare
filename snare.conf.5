@@ -129,12 +129,40 @@ or
 .Qq .. .
 This means that they are safe to pass as shell arguments and/or to be included
 in file system paths.
-.It Sy email = Qq Em address ;
-optionally specifies an email address to which any errors when running commands
-will be sent (warning: full stderr/stdout will be sent, so consider carefully
-whether these have sensitive information or not).
-This uses the `sendmail` command to send email: you should ensure that you have
-installed, set-up, and enabled a suitable `sendmail` clone.
+.It Sy errorcmd = Qq Em shell-cmd ;
+optionally specifies a command to be run when a job exits unsuccessfully.
+.Em shell-cmd
+will be executed via
+.Ql $SHELL -c .
+The following escape sequences are recognised and replaced before execution:
+.Bl -tag -width Ds
+.It Sy %e
+the GitHub event type (e.g.
+.Ql pull_request ) .
+.It Sy %j
+the path to the GitHub JSON.
+.It Sy %o
+the repository owner.
+.It Sy %r
+the repository.
+.It Sy %s
+the path to the file containing the job's combined stderr / stdout.
+.It Sy %%
+a literal
+.Ql % .
+.El
+Note that
+.Ql %
+may not be followed by any character other than those above.
+.Pp
+The escape sequences are guaranteed to satisfy the regular expression
+.Qq [a-zA-Z0-9._-]+
+and not to be the strings
+.Qq \&.
+or
+.Qq .. .
+This means that they are safe to pass as shell arguments and/or to be included
+in file system paths.
 .It Sy queue = Po evict | parallel | sequential Pc ;
 specifies what to do when multiple requests for the same repository
 are queued at once:
@@ -202,7 +230,7 @@ listen = "<address>:<port>";
 github {
   match ".*" {
     cmd = "/path/to/prps/%o/%r %e %j";
-    email = "<email>";
+    error_cmd = "cat %s | mailx -s \\"snare error: github.com/%o/%r\\" someone@example.com";
     secret = "<secret>";
   }
 }
@@ -215,6 +243,9 @@ Each repository then has a unique program
 .Qq %o/%r
 which will be executed with two arguments: the GitHub event; and the path to
 the GitHub JSON.
+If a job exits unsuccessfully then an email will be sent to someone@example.com
+containing the job's comined stderr and stdout output (assuming that a suitable
+sendmail clone has been installed and activated).
 .Pp
 The top-to-bottom evaluation of match blocks allow users to specify defaults
 which are only overridden for specific repositories.
@@ -225,11 +256,11 @@ github {
   reposdir = "<path>";
   match ".*" {
     cmd = "/path/to/prps/%o/%r %e %j";
-    email = "abc@def.com";
+    error_cmd = "cat %s | mailx -s \\"snare error: github.com/%o/%r\\" abc@def.com";
     secret = "sec";
   }
   match "a/b" {
-    email = "ghi@jkl.com";
+    error_cmd = "lpr %s";
   }
 }
 .Ed
@@ -240,13 +271,13 @@ a/b:
   queue = sequential
   timeout = 3600
   cmd = "/path/to/prps/%o/%r %e %j";
-  email = "ghi@jkl.com"
+  error_cmd = "lpr %s";
   secret = "sec"
 c/d:
   queue = sequential
   timeout = 3600
   cmd = "/path/to/prps/%o/%r %e %j";
-  email = "abc@def.com"
+  error_cmd = "cat %s | mailx -s \\"snare error: github.com/%o/%r\\" abc@def.com";
   secret = "sec"
 .Ed
 .Pp

@@ -1,3 +1,29 @@
+# snare 0.4.0 (2020-xx-xx)
+
+## Breaking changes
+
+* The `email` option in `match` blocks has been replaced by the more generic
+  `errorcmd`. To obtain the previous behaviour:
+
+    ```
+    email = "someone@example.com";
+    ```
+
+  should be changed to something like:
+
+    ```
+    errorcmd = "cat %s | mailx -s \"snare error: github.com/%o/%r\" someone@example.com";
+    ```
+
+  This assumes that the `mailx` command is installed on your machine.  As this
+  example may suggest, `errorcmd` is much more flexible than `email`.  The
+  syntax of `errorcmd` is the same as `cmd` with the addition that `%s` is
+  expanded to the path of the failed job's combined stderr / stdout.
+
+  `snare` informs users whose config contains `email` how to update to
+  `errorcmd` to obtain the previous behaviour.
+
+
 # snare 0.3.0 (2020-03-08)
 
 ## Breaking changes

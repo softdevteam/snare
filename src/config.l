@@ -7,6 +7,7 @@
 ; ";"
 cmd "CMD"
 email "EMAIL"
+errorcmd "ERRORCMD"
 evict "EVICT"
 github "GITHUB"
 listen "LISTEN"

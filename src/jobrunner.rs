@@ -1,9 +1,10 @@
 use std::{
+    collections::HashMap,
     convert::TryInto,
     env,
     error::Error,
-    fs::{self, remove_file, File},
-    io::{Read, Seek, SeekFrom, Write},
+    fs::{self, remove_file},
+    io::{Read, Write},
     os::unix::io::{AsRawFd, RawFd},
     path::PathBuf,
     process::{self, Child, Command},
@@ -12,7 +13,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use lettre::{sendmail::SendmailTransport, EmailAddress, Envelope, SendableEmail, Transport};
 use libc::c_int;
 use nix::{
     fcntl::{fcntl, FcntlArg, OFlag},
@@ -20,14 +20,9 @@ use nix::{
     sys::signal::{kill, Signal},
     unistd::Pid,
 };
-use tempfile::{tempdir, tempfile, NamedTempFile, TempDir};
-use whoami::{hostname, username};
+use tempfile::{tempdir, NamedTempFile, TempDir};
 
-use crate::{
-    config::{GitHub, RepoConfig},
-    queue::QueueJob,
-    Snare,
-};
+use crate::{config::RepoConfig, queue::QueueJob, Snare};
 
 /// The size of the temporary read buffer in bytes. Should be >= PIPE_BUF for performance reasons.
 const READBUF: usize = 8 * 1024;
@@ -139,7 +134,8 @@ impl JobRunner {
                             self.running[i]
                                 .as_mut()
                                 .unwrap()
-                                .stderrout_file
+                                .stderrout
+                                .as_file_mut()
                                 .write_all(&buf[0..j])
                                 .ok();
                         }
@@ -164,7 +160,8 @@ impl JobRunner {
                             self.running[i]
                                 .as_mut()
                                 .unwrap()
-                                .stderrout_file
+                                .stderrout
+                                .as_file_mut()
                                 .write_all(&buf[0..j])
                                 .ok();
                         }
@@ -220,7 +217,7 @@ impl JobRunner {
                     if exited {
                         if !exited_success {
                             let job = &self.running[i].as_ref().unwrap();
-                            self.sendemail(&job, &job.stderrout_file);
+                            self.run_errorcmd(&job);
                         }
                         remove_file(&self.running[i].as_ref().unwrap().json_path).ok();
                         self.running[i] = None;
@@ -351,8 +348,8 @@ impl JobRunner {
         // We combine the child process's stderr/stdout and write them to an unnamed temporary
         // file `stderrout_file`.
         if let Ok(tempdir) = tempdir() {
-            if let Ok(stderrout_file) = tempfile() {
-                if set_nonblock(stderrout_file.as_raw_fd()).is_ok() {
+            if let Ok(stderrout) = NamedTempFile::new() {
+                if set_nonblock(stderrout.as_file().as_raw_fd()).is_ok() {
                     if let Some(json_path_str) = json_path.to_str() {
                         let cmd = cmd_replace(
                             raw_cmd,
@@ -405,11 +402,14 @@ impl JobRunner {
 
                         return Ok(Job {
                             repo_id: qj.repo_id,
+                            event_type: qj.event_type,
+                            owner: qj.owner,
+                            repo: qj.repo,
                             finish_by,
                             child,
-                            _tempdir: tempdir,
+                            tempdir,
                             json_path,
-                            stderrout_file,
+                            stderrout,
                             stderr_hup: false,
                             stdout_hup: false,
                             rconf: qj.rconf,
@@ -479,34 +479,37 @@ impl JobRunner {
     }
 
     /// If the user has specified an email address, send the contents of
-    fn sendemail(&self, job: &Job, mut file: &File) {
-        if let Some(ref toaddr) = job.rconf.email {
-            let mut buf = Vec::new();
-            buf.extend(format!("Subject: snare error: {}\n\n", job.repo_id).as_bytes());
-            file.seek(SeekFrom::Start(0)).ok();
-            file.read_to_end(&mut buf).ok();
-
-            let fromea = match EmailAddress::new(format!("{}@{}", username(), hostname())) {
-                Ok(ea) => Some(ea),
-                Err(_) => None,
-            };
-
-            match EmailAddress::new(toaddr.to_string()) {
-                Ok(toea) => {
-                    let env = match Envelope::new(fromea, vec![toea]) {
-                        Ok(env) => env,
-                        Err(e) => return self.snare.error_err("Couldn't send email: {:?}", e),
-                    };
-                    let email = SendableEmail::new(env, "na".to_string(), buf);
-
-                    let mut sender = SendmailTransport::new();
-                    if let Err(e) = sender.send(email) {
-                        self.snare.error_err("Couldn't send email: {:?}", e);
-                    }
+    fn run_errorcmd(&self, job: &Job) {
+        if let Some(raw_errorcmd) = &job.rconf.errorcmd {
+            let errorcmd = errorcmd_replace(
+                raw_errorcmd,
+                &job.event_type,
+                &job.owner,
+                &job.repo,
+                &job.json_path.as_os_str().to_str().unwrap(),
+                &job.stderrout.path().as_os_str().to_str().unwrap(),
+            );
+            let mut child = match Command::new(&self.shell)
+                .arg("-c")
+                .arg(&errorcmd)
+                .current_dir(job.tempdir.path())
+                .stderr(process::Stdio::null())
+                .stdout(process::Stdio::null())
+                .stdin(process::Stdio::null())
+                .spawn()
+            {
+                Ok(c) => c,
+                Err(e) => {
+                    self.snare
+                        .error_err(&format!("Can't spawn '{}'", errorcmd), e);
+                    return;
                 }
-                Err(_) => self
+            };
+            match child.wait() {
+                Ok(status) if status.success() => (),
+                _ => self
                     .snare
-                    .error(&format!("Invalid To: email address {}", toaddr)),
+                    .error(&format!("Non-zero exit when executing '{}'", errorcmd)),
             }
         }
     }
@@ -516,7 +519,7 @@ impl JobRunner {
 ///   * `%e` with `event_type`
 ///   * `%o` with `owner`
 ///   * `%r` with `repo`
-///   * `%j` with `json_type`
+///   * `%j` with `json_path`
 ///
 /// Note that `raw_cmd` *must* have been validated by config::GitHub::verify_cmd_str or undefined
 /// behaviour will occur.
@@ -527,57 +530,89 @@ fn cmd_replace(
     repo: &str,
     json_path: &str,
 ) -> String {
-    debug_assert!(GitHub::verify_cmd_str(raw_cmd).is_ok());
+    let modifiers = [
+        ('e', event_type),
+        ('o', owner),
+        ('r', repo),
+        ('j', json_path),
+        ('%', "%"),
+    ]
+    .iter()
+    .cloned()
+    .collect();
+    replace(raw_cmd, modifiers)
+}
+
+/// Take the string `raw_errorcmd` and return a string with the following replaced:
+///   * `%e` with `event_type`
+///   * `%o` with `owner`
+///   * `%r` with `repo`
+///   * `%j` with `json_path`
+///   * `%s` with `stderrout_path`
+///
+/// Note that `raw_cmd` *must* have been validated by config::GitHub::verify_errorcmd_str or
+/// undefined behaviour will occur.
+fn errorcmd_replace(
+    raw_errorcmd: &str,
+    event_type: &str,
+    owner: &str,
+    repo: &str,
+    json_path: &str,
+    stderrout_path: &str,
+) -> String {
+    let modifiers = [
+        ('e', event_type),
+        ('o', owner),
+        ('r', repo),
+        ('j', json_path),
+        ('s', stderrout_path),
+        ('%', "%"),
+    ]
+    .iter()
+    .cloned()
+    .collect();
+    replace(raw_errorcmd, modifiers)
+}
+
+fn replace(s: &str, modifiers: HashMap<char, &str>) -> String {
     // Except in the presence of '%%'s, the output string will be at least as long as the input
     // string, so starting at that capacity is a reasonable heuristic.
-    let mut cmd = String::with_capacity(raw_cmd.len());
+    let mut n = String::with_capacity(s.len());
     let mut i = 0;
-    while i < raw_cmd.len() {
-        if raw_cmd[i..].starts_with('%') {
-            let c = raw_cmd[i + 1..].chars().nth(0).unwrap();
-            if c == 'e' {
-                cmd.push_str(event_type);
-                i += 2;
-            } else if c == 'o' {
-                cmd.push_str(owner);
-                i += 2;
-            } else if c == 'r' {
-                cmd.push_str(repo);
-                i += 2;
-            } else if c == 'j' {
-                cmd.push_str(json_path);
-                i += 2;
-            } else if c == '%' {
-                cmd.push('%');
-                i += 2;
-            } else {
-                unreachable!();
-            }
+    while i < s.len() {
+        if s[i..].starts_with('%') {
+            let mdf = s[i + 1..].chars().next().unwrap(); // modifier
+            n.push_str(modifiers.get(&mdf).unwrap());
+            i += 1 + mdf.len_utf8();
         } else {
-            let c = raw_cmd[i..].chars().nth(0).unwrap();
-            cmd.push(c);
+            let c = s[i..].chars().next().unwrap();
+            n.push(c);
             i += c.len_utf8();
         }
     }
-    cmd
+    n
 }
 
 struct Job {
-    /// The repo identifier. This is used:
-    ///   * to determine if a given repository already has jobs running or not.
-    ///   * as part of the subject line when emailing about a failed job.
-    /// Typically of the form "provider/owner/repo".
+    /// The repo identifier. This is used to determine if a given repository already has jobs
+    /// running or not. Typically of the form "provider/owner/repo".
     repo_id: String,
+    /// The event type.
+    event_type: String,
+    /// The repository owner's name.
+    owner: String,
+    /// The repository name.
+    repo: String,
     /// What time must this Job have completed by? If it exceeds this time, it will be terminated.
     finish_by: Instant,
     /// The child process itself.
     child: Child,
     /// This TempDir will be dropped, and its file system contents removed, when this Job is dropped.
-    _tempdir: TempDir,
+    tempdir: TempDir,
     /// We are responsible for manually cleaning up the JSON file stored in `json_path`.
     json_path: PathBuf,
-    /// The file to which we write combined stderr/stdout.
-    stderrout_file: File,
+    /// The temporary file to which we write combined stderr/stdout.
+    stderrout: NamedTempFile,
     /// Has the child process's stderr been closed?
     stderr_hup: bool,
     /// Has the child process's stdout been closed?
@@ -613,6 +648,16 @@ mod test {
         assert_eq!(
             cmd_replace("%% %e %o %r %j %%", "ee", "oo", "rr", "jj"),
             "% ee oo rr jj %"
+        );
+    }
+
+    #[test]
+    fn test_errorcmd_replace() {
+        assert_eq!(errorcmd_replace("", "", "", "", "", ""), "");
+        assert_eq!(errorcmd_replace("a", "", "", "", "", ""), "a");
+        assert_eq!(
+            errorcmd_replace("%% %e %o %r %j %s %%", "ee", "oo", "rr", "jj", "ss"),
+            "% ee oo rr jj ss %"
         );
     }
 }
