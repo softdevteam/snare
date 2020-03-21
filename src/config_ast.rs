@@ -19,6 +19,7 @@ pub struct Match {
 pub enum PerRepoOption {
     Cmd(Span),
     Email(Span),
+    ErrorCmd(Span),
     Queue(Span, QueueKind),
     Secret(Span),
     Timeout(Span),

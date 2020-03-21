@@ -178,7 +178,7 @@ impl GitHub {
                 }
             };
             let mut cmd = None;
-            let mut email = None;
+            let mut errorcmd = None;
             let mut queuekind = None;
             let mut secret = None;
             let mut timeout = None;
@@ -197,15 +197,19 @@ impl GitHub {
                         cmd = Some(cmd_str);
                     }
                     config_ast::PerRepoOption::Email(span) => {
-                        if email.is_some() {
+                        return Err(error_at_span(lexer, span, "Replace:\n  email = \"someone@example.com\"; }\nwith:\n  error_cmd = \"cat %f | mailx -s \\\"snare error: github.com/%o/%r\\\" someone@example.com\";"));
+                    }
+                    config_ast::PerRepoOption::ErrorCmd(span) => {
+                        if errorcmd.is_some() {
                             return Err(error_at_span(
                                 lexer,
                                 span,
-                                "Mustn't specify 'email' more than once",
+                                "Mustn't specify 'error_cmd' more than once",
                             ));
                         }
-                        let email_str = unescape_str(lexer.span_str(span));
-                        email = Some(email_str);
+                        let errorcmd_str = unescape_str(lexer.span_str(span));
+                        GitHub::verify_errorcmd_str(&errorcmd_str)?;
+                        errorcmd = Some(errorcmd_str);
                     }
                     config_ast::PerRepoOption::Queue(span, qkind) => {
                         if queuekind.is_some() {
@@ -268,7 +272,7 @@ impl GitHub {
             matches.push(Match {
                 re,
                 cmd,
-                email,
+                errorcmd,
                 queuekind,
                 secret,
                 timeout,
@@ -279,15 +283,24 @@ impl GitHub {
     }
 
     /// Verify that the `cmd` string is valid, returning `Ok())` if so or `Err(String)` if not.
-    pub(crate) fn verify_cmd_str(cmd: &str) -> Result<(), String> {
+    fn verify_cmd_str(cmd: &str) -> Result<(), String> {
+        GitHub::verify_str(cmd, &['e', 'o', 'r', 'j', '%'])
+    }
+
+    /// Verify that the `errorcmd` string is valid, returning `Ok())` if so or `Err(String)` if not.
+    fn verify_errorcmd_str(errorcmd: &str) -> Result<(), String> {
+        GitHub::verify_str(errorcmd, &['e', 'o', 'r', 'j', 's', '%'])
+    }
+
+    fn verify_str(s: &str, modifiers: &[char]) -> Result<(), String> {
         let mut i = 0;
-        while i < cmd.len() {
-            if cmd[i..].starts_with('%') {
-                if i + 1 == cmd.len() {
-                    return Err("'cmd' cannot end with a single '%'.".to_owned());
+        while i < s.len() {
+            if s[i..].starts_with('%') {
+                if i + 1 == s.len() {
+                    return Err("Cannot end command string with a single '%'.".to_owned());
                 }
-                let c = cmd[i + 1..].chars().nth(0).unwrap();
-                if !(c == 'e' || c == 'o' || c == 'r' || c == 'j' || c == '%') {
+                let c = s[i + 1..].chars().nth(0).unwrap();
+                if !modifiers.contains(&c) {
                     return Err(format!("Unknown '%' modifier '{}.", c));
                 }
                 i += 2;
@@ -306,7 +319,7 @@ impl GitHub {
     pub fn repoconfig<'a>(&'a self, owner: &str, repo: &str) -> (RepoConfig, Option<&'a SecStr>) {
         let s = format!("{}/{}", owner, repo);
         let mut cmd = None;
-        let mut email = None;
+        let mut errorcmd = None;
         let mut queuekind = None;
         let mut secret = None;
         let mut timeout = None;
@@ -315,8 +328,8 @@ impl GitHub {
                 if let Some(ref c) = m.cmd {
                     cmd = Some(c.clone());
                 }
-                if let Some(ref e) = m.email {
-                    email = Some(e.clone());
+                if let Some(ref e) = m.errorcmd {
+                    errorcmd = Some(e.clone());
                 }
                 if let Some(q) = m.queuekind {
                     queuekind = Some(q);
@@ -334,7 +347,7 @@ impl GitHub {
         (
             RepoConfig {
                 cmd,
-                email,
+                errorcmd,
                 queuekind: queuekind.unwrap(),
                 timeout: timeout.unwrap(),
             },
@@ -362,7 +375,7 @@ fn unescape_str(us: &str) -> String {
             let c2 = us[i..].chars().nth(0).unwrap();
             debug_assert!(c2 == '"' || c2 == '\\');
             s.push(c2);
-            i += c.len_utf8() + c2.len_utf8();
+            i += c2.len_utf8();
         } else {
             s.push(c);
             i += c.len_utf8();
@@ -376,8 +389,9 @@ pub struct Match {
     re: Regex,
     /// The command to run (note that this contains escape characters such as %o and %r).
     cmd: Option<String>,
-    /// An optional email address to send errors to.
-    email: Option<String>,
+    /// An optional command to run when an error occurs (note that this contains escape characters
+    /// such as %o and %r).
+    errorcmd: Option<String>,
     /// The queue kind.
     queuekind: Option<QueueKind>,
     /// The GitHub secret used to validate requests.
@@ -393,7 +407,7 @@ impl Default for Match {
         Match {
             re,
             cmd: None,
-            email: None,
+            errorcmd: None,
             queuekind: Some(QueueKind::Sequential),
             secret: None,
             timeout: Some(DEFAULT_TIMEOUT),
@@ -422,7 +436,7 @@ fn error_at_span(lexer: &dyn Lexer<StorageT>, span: Span, msg: &str) -> String {
 /// The configuration for a given repository.
 pub struct RepoConfig {
     pub cmd: Option<String>,
-    pub email: Option<String>,
+    pub errorcmd: Option<String>,
     pub queuekind: QueueKind,
     pub timeout: u64,
 }
@@ -447,6 +461,18 @@ mod test {
         assert!(GitHub::verify_cmd_str("%").is_err());
         assert!(GitHub::verify_cmd_str("a%").is_err());
         assert!(GitHub::verify_cmd_str("%a").is_err());
+        assert!(GitHub::verify_cmd_str("%s").is_err());
+    }
+
+    #[test]
+    fn test_verify_errorcmd_string() {
+        assert!(GitHub::verify_errorcmd_str("").is_ok());
+        assert!(GitHub::verify_errorcmd_str("a").is_ok());
+        assert!(GitHub::verify_errorcmd_str("%% %e %o %r %j %s %%").is_ok());
+        assert!(GitHub::verify_errorcmd_str("%%").is_ok());
+        assert!(GitHub::verify_errorcmd_str("%").is_err());
+        assert!(GitHub::verify_errorcmd_str("a%").is_err());
+        assert!(GitHub::verify_errorcmd_str("%a").is_err());
     }
 
     #[test]
@@ -454,6 +480,7 @@ mod test {
         assert_eq!(unescape_str("\"\""), "");
         assert_eq!(unescape_str("\"a\""), "a");
         assert_eq!(unescape_str("\"a\\\"\""), "a\"");
+        assert_eq!(unescape_str("\"a\\\"b\""), "a\"b");
         assert_eq!(unescape_str("\"\\\\\""), "\\");
     }
 

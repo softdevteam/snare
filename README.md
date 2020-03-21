@@ -46,7 +46,7 @@ listen = "<ip-address>:<port>";
 github {
   match ".*" {
     cmd = "/path/to/prps/%o/%r %e %j";
-    email = "<email-address>";
+    errorcmd = "cat %s | mailx -s \"snare error: github.com/%o/%r\" someone@example.com";
     secret = "<secret>";
   }
 }
@@ -68,11 +68,10 @@ where:
    run with their current working directory set to a temporary directory to
    which they can freely write and which will be automatically removed when
    they have completed.
- * `email-address` is an email address to which any errors running per-repo
-   programs will be sent (warning: full stderr/stdout will be sent, so consider
-   carefully whether these have sensitive information or not). This uses
-   the `sendmail` command to send email: you should ensure that you have
-   installed, set-up, and enabled a suitable `sendmail` clone.
+ * `errorcmd` is the command that will be run when a `cmd` exits
+   unsuccessfully. In this example, an email is sent to `someone@example.com`
+   with a body consisting of the comined stedrr/stdout. This assumes that you
+   have installed, set-up, and enabled a suitable `sendmail` clone.
  * `secret` is the GitHub secret used to sign the webhook request and thus
    allowing `snare` to tell the difference between genuine webhook requests
    and those from malfeasants.
