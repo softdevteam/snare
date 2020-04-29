@@ -3,6 +3,8 @@
 //! normal command fails. For normal commands, we track stderr/stdout and exit status; for error
 //! commands we track only exit status.
 
+#![allow(clippy::cognitive_complexity)]
+
 use std::{
     collections::HashMap,
     convert::TryInto,
@@ -217,13 +219,11 @@ impl JobRunner {
                                     "errorcmd exited unsuccessfully: {}",
                                     job.rconf.errorcmd.as_ref().unwrap()
                                 ));
-                            } else {
-                                if let Some(errorchild) = self.run_errorcmd(&job) {
-                                    let mut job = &mut self.running[i].as_mut().unwrap();
-                                    job.child = errorchild;
-                                    job.is_errorcmd = true;
-                                    continue;
-                                }
+                            } else if let Some(errorchild) = self.run_errorcmd(&job) {
+                                let mut job = &mut self.running[i].as_mut().unwrap();
+                                job.child = errorchild;
+                                job.is_errorcmd = true;
+                                continue;
                             }
                         }
                         remove_file(&self.running[i].as_ref().unwrap().json_path).ok();

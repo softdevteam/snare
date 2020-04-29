@@ -299,7 +299,7 @@ impl GitHub {
                 if i + 1 == s.len() {
                     return Err("Cannot end command string with a single '%'.".to_owned());
                 }
-                let c = s[i + 1..].chars().nth(0).unwrap();
+                let c = s[i + 1..].chars().next().unwrap();
                 if !modifiers.contains(&c) {
                     return Err(format!("Unknown '%' modifier '{}.", c));
                 }
@@ -366,13 +366,13 @@ fn unescape_str(us: &str) -> String {
     // We iterate over all characters except the opening and closing quote characters.
     let mut i = '"'.len_utf8();
     while i < us.len() - '"'.len_utf8() {
-        let c = us[i..].chars().nth(0).unwrap();
+        let c = us[i..].chars().next().unwrap();
         if c == '\\' {
             // The regex in config.l should have guaranteed that there are no unescaped quote (")
             // characters, but we check here just to be sure.
             debug_assert!(i < us.len() - '"'.len_utf8());
             i += 1;
-            let c2 = us[i..].chars().nth(0).unwrap();
+            let c2 = us[i..].chars().next().unwrap();
             debug_assert!(c2 == '"' || c2 == '\\');
             s.push(c2);
             i += c2.len_utf8();
@@ -421,7 +421,7 @@ fn error_at_span(lexer: &dyn Lexer<StorageT>, span: Span, msg: &str) -> String {
     let code = lexer
         .span_lines_str(span)
         .split('\n')
-        .nth(0)
+        .next()
         .unwrap()
         .trim();
     format!(
