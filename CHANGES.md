@@ -1,4 +1,4 @@
-# snare 0.4.0 (2020-xx-xx)
+# snare 0.4.0 (2020-05-13)
 
 ## Breaking changes
 
@@ -22,6 +22,18 @@
 
   `snare` informs users whose config contains `email` how to update to
   `errorcmd` to obtain the previous behaviour.
+
+## Minor changes
+
+* After daemonisation, all errors are now sent to syslog (previously a few
+  errors could still be sent to stderr).
+
+* Fix bug in parsing string escapes, where one character too many was
+  consumed after `\"`.
+
+* Use SIGCHLD to listen for child process exit, so that `snare` does not have
+  to be woken up as often.
+
 
 
 # snare 0.3.0 (2020-03-08)
