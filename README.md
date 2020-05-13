@@ -92,7 +92,7 @@ If we set up a web hook up for that repository that notifies us of pull request
 events, then with the above `snare.conf`, the command:
 
 ```sh
-<repo-programs-dir>/softdevteam/snare pull_request /path/to/json
+/path/to/prps/softdevteam/snare pull_request /path/to/json
 ```
 
 will be executed, where: `pull_request` is the name of the GitHub event; and
