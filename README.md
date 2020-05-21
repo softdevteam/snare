@@ -163,6 +163,10 @@ GitHub to deliver. For example, the default `Just the push event` works well
 with the email diff sending per-repo program above, but you can specify
 whichever events you wish.
 
+Once you have set up your webhook, GitHub will automatically send a test "ping"
+message. `snare` acknowledges pings (i.e. confirms to GitHub that it is
+running), but does not execute any commands in response to pings.
+
 
 ## HTTPS/TLS
 
