@@ -12,13 +12,13 @@ keywords = ["github", "webhook"]
 edition = "2018"
 
 [build-dependencies]
-cfgrammar = "0.7"
-lrlex = "0.7"
-lrpar = "0.7"
+cfgrammar = "0.8"
+lrlex = "0.8"
+lrpar = "0.8"
 rerun_except = "0.1"
 
 [dependencies]
-cfgrammar = "0.7"
+cfgrammar = "0.8"
 crypto-mac = "0.7"
 getopts = "0.2"
 hex = "0.4"
@@ -26,8 +26,8 @@ hmac = "0.7"
 hyper = "0.13"
 json = "0.12"
 libc = "0.2"
-lrlex = "0.7"
-lrpar = "0.7"
+lrlex = "0.8"
+lrpar = "0.8"
 nix = "0.17"
 num_cpus = "1.12"
 percent-encoding = "2.1"
