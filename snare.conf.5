@@ -311,6 +311,8 @@ repo_fullname=`jq .repository.full_name "$2" | tr -d '\"'`
 repo_url=`jq .repository.html_url "$2" | tr -d '\"'`
 before_hash=`jq .before "$2" | tr -d '\"'`
 after_hash=`jq .after "$2" | tr -d '\"'`
+echo "$before_hash" | grep -E "^[a-fA-F0-9]+$" 2>&1 > /dev/null
+echo "$after_hash" | grep -E "^[a-fA-F0-9]+$" 2>&1 > /dev/null
 
 git clone "$REPO_URL" repo
 cd repo
