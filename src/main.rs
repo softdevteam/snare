@@ -33,7 +33,6 @@ use nix::{
     fcntl::OFlag,
     unistd::{daemon, pipe2, setresgid, setresuid, Gid, Uid},
 };
-use signal_hook;
 use tokio::runtime::Runtime;
 use users::{get_user_by_name, os::unix::UserExt};
 
