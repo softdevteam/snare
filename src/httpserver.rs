@@ -1,11 +1,9 @@
 use std::{convert::Infallible, sync::Arc, time::Instant};
 
 use crypto_mac::Mac;
-use hex;
 use hmac::Hmac;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{self, body::Bytes, server::conn::AddrIncoming, Body, Request, Response, StatusCode};
-use json;
 use percent_encoding::percent_decode;
 use secstr::SecStr;
 use sha1::Sha1;
