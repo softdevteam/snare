@@ -1,6 +1,6 @@
 use std::{convert::Infallible, sync::Arc, time::Instant};
 
-use crypto_mac::Mac;
+use crypto_mac::{Mac, NewMac};
 use hmac::Hmac;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{self, body::Bytes, server::conn::AddrIncoming, Body, Request, Response, StatusCode};
@@ -135,7 +135,7 @@ fn get_hub_sig(req: &Request<Body>) -> Option<String> {
 fn authenticate(secret: &SecStr, sig: String, pl: Bytes) -> bool {
     // We've already checked the key length when creating the config, so the unwrap() is safe.
     let mut mac = Hmac::<Sha1>::new_varkey(secret.unsecure()).unwrap();
-    mac.input(&*pl);
+    mac.update(&*pl);
     match hex::decode(sig) {
         Ok(d) => mac.verify(&d).is_ok(),
         Err(_) => false,

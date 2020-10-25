@@ -1,6 +1,6 @@
 use std::{fs::read_to_string, net::SocketAddr, path::PathBuf, process, str::FromStr};
 
-use crypto_mac::{InvalidKeyLength, Mac};
+use crypto_mac::{InvalidKeyLength, NewMac};
 use hmac::Hmac;
 use lrlex::lrlex_mod;
 use lrpar::{lrpar_mod, NonStreamingLexer, Span};
