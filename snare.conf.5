@@ -230,7 +230,7 @@ listen = "<address>:<port>";
 github {
   match ".*" {
     cmd = "/path/to/prps/%o/%r %e %j";
-    error_cmd = "cat %s | mailx -s \\"snare error: github.com/%o/%r\\" someone@example.com";
+    errorcmd = "cat %s | mailx -s \\"snare error: github.com/%o/%r\\" someone@example.com";
     secret = "<secret>";
   }
 }
@@ -256,11 +256,11 @@ github {
   reposdir = "<path>";
   match ".*" {
     cmd = "/path/to/prps/%o/%r %e %j";
-    error_cmd = "cat %s | mailx -s \\"snare error: github.com/%o/%r\\" abc@def.com";
+    errorcmd = "cat %s | mailx -s \\"snare error: github.com/%o/%r\\" abc@def.com";
     secret = "sec";
   }
   match "a/b" {
-    error_cmd = "lpr %s";
+    errorcmd = "lpr %s";
   }
 }
 .Ed
@@ -271,13 +271,13 @@ a/b:
   queue = sequential
   timeout = 3600
   cmd = "/path/to/prps/%o/%r %e %j";
-  error_cmd = "lpr %s";
+  errorcmd = "lpr %s";
   secret = "sec"
 c/d:
   queue = sequential
   timeout = 3600
   cmd = "/path/to/prps/%o/%r %e %j";
-  error_cmd = "cat %s | mailx -s \\"snare error: github.com/%o/%r\\" abc@def.com";
+  errorcmd = "cat %s | mailx -s \\"snare error: github.com/%o/%r\\" abc@def.com";
   secret = "sec"
 .Ed
 .Pp
