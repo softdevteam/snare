@@ -197,7 +197,7 @@ impl GitHub {
                         cmd = Some(cmd_str);
                     }
                     config_ast::PerRepoOption::Email(span) => {
-                        return Err(error_at_span(lexer, span, "Replace:\n  email = \"someone@example.com\"; }\nwith:\n  errorcmd = \"cat %f | mailx -s \\\"snare error: github.com/%o/%r\\\" someone@example.com\";"));
+                        return Err(error_at_span(lexer, span, "Replace:\n  email = \"someone@example.com\"; }\nwith:\n  errorcmd = \"cat %s | mailx -s \\\"snare error: github.com/%o/%r\\\" someone@example.com\";"));
                     }
                     config_ast::PerRepoOption::ErrorCmd(span) => {
                         if errorcmd.is_some() {
