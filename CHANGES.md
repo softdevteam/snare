@@ -1,3 +1,10 @@
+# snare 0.4.1 (2020-12-03)
+
+* Documentation improvements, including more secure examples.
+
+* Updated dependencies, solving a long-standing slow error leak.
+
+
 # snare 0.4.0 (2020-05-13)
 
 ## Breaking changes
