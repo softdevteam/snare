@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <link rel="stylesheet" href="/snare/mandoc.css" type="text/css" media="all"/>
+  <title>SNARE(1)</title>
+</head>
+<body>
+<table class="head">
+  <tr>
+    <td class="head-ltitle">SNARE(1)</td>
+    <td class="head-vol">General Commands Manual</td>
+    <td class="head-rtitle">SNARE(1)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<h1 class="Sh" title="Sh" id="NAME"><a class="permalink" href="#NAME">NAME</a></h1>
+<code class="Nm" title="Nm">snare</code> &#x2014;
+<div class="Nd" title="Nd">GitHub webhooks runner</div>
+<h1 class="Sh" title="Sh" id="SYNOPSIS"><a class="permalink" href="#SYNOPSIS">SYNOPSIS</a></h1>
+<table class="Nm">
+  <tr>
+    <td><code class="Nm" title="Nm">snare</code></td>
+    <td>[<div class="Op"><code class="Fl" title="Fl">-c</code>
+      <var class="Ar" title="Ar">config-file</var></div>]
+      [<div class="Op"><code class="Fl" title="Fl">-d</code></div>]</td>
+  </tr>
+</table>
+<h1 class="Sh" title="Sh" id="DESCRIPTION"><a class="permalink" href="#DESCRIPTION">DESCRIPTION</a></h1>
+<code class="Nm" title="Nm">snare</code> is a GitHub webhooks daemon. When
+  <code class="Nm" title="Nm">snare</code> receives a webhook event from a given
+  repository, it authenticates the request, and then executes a user-defined
+  &#x201C;per-repo program&#x201D; with information about the webhook event.
+<div class="Pp"></div>
+The options are as follows:
+<dl class="Bl-tag">
+  <dt>&#x00A0;</dt>
+  <dd>&#x00A0;</dd>
+  <dt><a class="permalink" href="#c"><code class="Fl" title="Fl" id="c">-c</code></a>
+    <var class="Ar" title="Ar">config-file</var></dt>
+  <dd>is a path to a <span class="Pa" title="Pa">snare.conf</span> configuration
+      file. If not specified, <code class="Nm" title="Nm">snare</code> assumes
+      the configuration file is located at
+      <span class="Pa" title="Pa">/etc/snare/snare.conf/</span>.</dd>
+  <dt>&#x00A0;</dt>
+  <dd>&#x00A0;</dd>
+  <dt><a class="permalink" href="#d"><code class="Fl" title="Fl" id="d">-d</code></a></dt>
+  <dd>tells <code class="Nm" title="Nm">snare</code> not to daemonise: in other
+      words, `snare` stays in the foreground and logs errors to stderr. This can
+      be useful for debugging.</dd>
+</dl>
+<h1 class="Sh" title="Sh" id="INTEGRATION_WITH_GITHUB"><a class="permalink" href="#INTEGRATION_WITH_GITHUB">INTEGRATION
+  WITH GITHUB</a></h1>
+<code class="Nm" title="Nm">snare</code> runs an HTTP server which GitHub can
+  send webhook requests to. Configuring a webhook for a given GitHub repository
+  is relatively simple: go to that repository, then &#x201C;Settings &gt;
+  Webhooks &gt; Add webhook&#x201D;. For &#x201C;payload&#x201D;, specify
+  &#x201C;http://yourmachine.com:port/&#x201D;, specify a &#x201C;secret&#x201D;
+  (which you will then reuse as the <b class="Sy" title="Sy">secret</b> in
+  <a class="Xr" title="Xr">snare.conf(5)</a>) and then choose which events you
+  wish GitHub to deliver.
+<h1 class="Sh" title="Sh" id="HTTPS/TLS"><a class="permalink" href="#HTTPS/TLS">HTTPS/TLS</a></h1>
+<code class="Nm" title="Nm">snare</code> runs an HTTP server. If you wish, as is
+  recommended, to send your webhooks over an encrypted connection, you will need
+  to run a proxy in front of <code class="Nm" title="Nm">snare</code>.
+<h1 class="Sh" title="Sh" id="DIAGNOSTICS"><a class="permalink" href="#DIAGNOSTICS">DIAGNOSTICS</a></h1>
+When run as a daemon, <code class="Nm" title="Nm">snare</code> logs to
+  <a class="Xr" title="Xr">syslogd(8)</a> under the &#x201C;daemon&#x201D;
+  facility.
+<h1 class="Sh" title="Sh" id="SEE_ALSO"><a class="permalink" href="#SEE_ALSO">SEE
+  ALSO</a></h1>
+<a class="Xr" title="Xr">snare.conf(5)</a>
+<div class="Pp"></div>
+<a class="Lk" title="Lk" href="https://tratt.net/laurie/src/snare">https://tratt.net/laurie/src/snare</a></div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2020-02-10</td>
+    <td class="foot-os">Debian</td>
+  </tr>
+</table>
+</body>
+</html>
