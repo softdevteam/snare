@@ -17,5 +17,9 @@ mkdir test_install
 PREFIX=test_install make install
 test -f test_install/bin/snare
 
-which cargo-deny | cargo install cargo-deny
-cargo-deny check license
+which cargo-deny | cargo install cargo-deny || true
+if [ "X`which cargo-deny`" != "X"]; then
+    cargo-deny check license
+else
+    echo "Warning: couldn't run cargo-deny" > /dev/stderr
+fi

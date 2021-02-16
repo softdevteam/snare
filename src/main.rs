@@ -293,7 +293,7 @@ pub fn main() {
         Err(e) => snare.fatal_err("Couldn't start runner thread", e),
     }
 
-    let mut rt = match Runtime::new() {
+    let rt = match Runtime::new() {
         Ok(rt) => rt,
         Err(e) => snare.fatal_err("Couldn't start tokio runtime.", e),
     };
