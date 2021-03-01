@@ -110,12 +110,8 @@ impl Queue {
                 earliest_key = Some(k.clone());
             }
         }
-        if let Some(k) = earliest_key {
-            // We know that there's an `Entry` for the key, and that the corresponding value vec
-            // has at least one value, so both unwrap()s are safe.
-            Some(self.q.get_mut(&k).unwrap().pop_front().unwrap())
-        } else {
-            None
-        }
+        // If there's an `Entry` for the key, then the corresponding value vec has at least one
+        // value, so both unwrap()s are safe.
+        earliest_key.map(|k| self.q.get_mut(&k).unwrap().pop_front().unwrap())
     }
 }

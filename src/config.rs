@@ -1,4 +1,4 @@
-use std::{fs::read_to_string, net::SocketAddr, path::PathBuf, process, str::FromStr};
+use std::{fs::read_to_string, net::SocketAddr, path::Path, process, str::FromStr};
 
 use crypto_mac::{InvalidKeyLength, NewMac};
 use hmac::Hmac;
@@ -31,7 +31,7 @@ pub struct Config {
 impl Config {
     /// Create a `Config` from `path`, returning `Err(String)` (containing a human readable
     /// message) if it was unable to do so.
-    pub fn from_path(conf_path: &PathBuf) -> Result<Self, String> {
+    pub fn from_path(conf_path: &Path) -> Result<Self, String> {
         let input = match read_to_string(conf_path) {
             Ok(s) => s,
             Err(e) => return Err(format!("Can't read {:?}: {}", conf_path, e)),
@@ -451,6 +451,7 @@ pub enum QueueKind {
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn test_verify_cmd_string() {
