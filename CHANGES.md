@@ -1,3 +1,9 @@
+# snare 0.4.2 (2021-03-17)
+
+* Update to tokio 1. Also update other dependencies, avoiding warnings over
+  yanked (old) versions of pin-project-lite.
+
+
 # snare 0.4.1 (2020-12-03)
 
 * Documentation improvements, including more secure examples.
