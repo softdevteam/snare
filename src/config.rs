@@ -239,7 +239,7 @@ impl GitHub {
                         // invalid length despite the API suggesting that it can be... We're
                         // conservative and assume that it really is possible to have an invalid
                         // length key.
-                        match Hmac::<Sha1>::new_varkey(sec_str.as_bytes()) {
+                        match Hmac::<Sha1>::new_from_slice(sec_str.as_bytes()) {
                             Ok(_) => (),
                             Err(InvalidKeyLength) => {
                                 return Err(error_at_span(lexer, span, "Invalid secret key length"))
