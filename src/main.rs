@@ -260,7 +260,7 @@ pub fn main() {
     {
         let sighup_occurred = Arc::clone(&sighup_occurred);
         if let Err(e) = unsafe {
-            signal_hook::register(signal_hook::SIGHUP, move || {
+            signal_hook::low_level::register(signal_hook::consts::SIGHUP, move || {
                 // All functions called in this function must be signal safe. See signal(3).
                 sighup_occurred.store(true, Ordering::Relaxed);
                 nix::unistd::write(event_write_fd, &[0]).ok();
@@ -269,7 +269,7 @@ pub fn main() {
             fatal_err(daemonise, "Can't install SIGHUP handler", e);
         }
         if let Err(e) = unsafe {
-            signal_hook::register(signal_hook::SIGCHLD, move || {
+            signal_hook::low_level::register(signal_hook::consts::SIGCHLD, move || {
                 // All functions called in this function must be signal safe. See signal(3).
                 nix::unistd::write(event_write_fd, &[0]).ok();
             })
