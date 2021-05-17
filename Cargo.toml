@@ -19,10 +19,10 @@ rerun_except = "1.0"
 
 [dependencies]
 cfgrammar = { path="../grmtools/cfgrammar"}
-crypto-mac = "0.10"
+crypto-mac = "0.11"
 getopts = "0.2"
 hex = "0.4"
-hmac = "0.10"
+hmac = "0.11"
 hyper = { version = "0.14", features = ["http1", "server", "tcp"] }
 json = "0.12"
 libc = "0.2"
