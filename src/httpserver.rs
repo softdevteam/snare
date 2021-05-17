@@ -134,7 +134,7 @@ fn get_hub_sig(req: &Request<Body>) -> Option<String> {
 /// user didn't specify a secret for this repository").
 fn authenticate(secret: &SecStr, sig: String, pl: Bytes) -> bool {
     // We've already checked the key length when creating the config, so the unwrap() is safe.
-    let mut mac = Hmac::<Sha1>::new_varkey(secret.unsecure()).unwrap();
+    let mut mac = Hmac::<Sha1>::new_from_slice(secret.unsecure()).unwrap();
     mac.update(&*pl);
     match hex::decode(sig) {
         Ok(d) => mac.verify(&d).is_ok(),
