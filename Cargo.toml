@@ -12,13 +12,13 @@ keywords = ["github", "webhook"]
 edition = "2018"
 
 [build-dependencies]
-cfgrammar = "0.9"
-lrlex = "0.9"
-lrpar = "0.9"
-rerun_except = "0.1"
+cfgrammar = { path="../grmtools/cfgrammar"}
+lrlex = { path="../grmtools/lrlex"}
+lrpar = { path="../grmtools/lrpar"}
+rerun_except = "1.0"
 
 [dependencies]
-cfgrammar = "0.9"
+cfgrammar = { path="../grmtools/cfgrammar"}
 crypto-mac = "0.10"
 getopts = "0.2"
 hex = "0.4"
@@ -26,17 +26,17 @@ hmac = "0.10"
 hyper = { version = "0.14", features = ["http1", "server", "tcp"] }
 json = "0.12"
 libc = "0.2"
-lrlex = "0.9"
-lrpar = "0.9"
-nix = "0.19"
+lrlex = { path="../grmtools/lrlex"}
+lrpar = { path="../grmtools/lrpar"}
+nix = "0.20"
 num_cpus = "1.12"
 percent-encoding = "2.1"
-regex = "1.4"
+regex = "1.5"
 secstr = "0.4"
 sha-1 = "0.9"
 signal-hook = "0.2"
 tempfile = "3.1"
-tokio = { version = "1.2", features = ["full"] }
+tokio = { version = "1.6", features = ["full"] }
 users = "0.11"
 
 [profile.release]
