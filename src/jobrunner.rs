@@ -219,7 +219,7 @@ impl JobRunner {
                                     "errorcmd exited unsuccessfully: {}",
                                     job.rconf.errorcmd.as_ref().unwrap()
                                 ));
-                            } else if let Some(errorchild) = self.run_errorcmd(&job) {
+                            } else if let Some(errorchild) = self.run_errorcmd(job) {
                                 let mut job = &mut self.running[i].as_mut().unwrap();
                                 job.child = errorchild;
                                 job.is_errorcmd = true;
@@ -362,7 +362,7 @@ impl JobRunner {
                             &qj.event_type,
                             &qj.owner,
                             &qj.repo,
-                            &json_path_str,
+                            json_path_str,
                         );
                         let child = match Command::new(&self.shell)
                             .arg("-c")
@@ -493,8 +493,8 @@ impl JobRunner {
                 &job.event_type,
                 &job.owner,
                 &job.repo,
-                &job.json_path.as_os_str().to_str().unwrap(),
-                &job.stderrout.path().as_os_str().to_str().unwrap(),
+                job.json_path.as_os_str().to_str().unwrap(),
+                job.stderrout.path().as_os_str().to_str().unwrap(),
             );
             match Command::new(&self.shell)
                 .arg("-c")
