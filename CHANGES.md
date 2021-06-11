@@ -1,4 +1,4 @@
-# snare 0.4.3 (2021-06-09)
+# snare 0.4.3 (2021-06-11)
 
 * Update many dependencies.
 
