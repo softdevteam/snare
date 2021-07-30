@@ -44,7 +44,7 @@ struct JobRunner {
     /// The maximum number of jobs we will run at any one point. Note that this may not necessarily
     /// be the same value as snare.conf.maxjobs.
     maxjobs: usize,
-    /// The running jobs, with `0..num_running` entries.
+    /// The running jobs (`num_running` of which will be `Some`, the remainder `None`).
     running: Vec<Option<Job>>,
     /// How many `Some` entries are there in `self.running`?
     num_running: usize,
