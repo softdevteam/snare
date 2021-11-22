@@ -74,11 +74,15 @@ Unknown -> ():
   ;
 
 %%
-use lrpar::{Lexeme, Span};
+
+use lrlex::DefaultLexeme;
+use lrpar::Span;
+
+type StorageT = u8;
 
 use crate::config_ast::{TopLevelOption, Match, PerRepoOption, ProviderOption, QueueKind};
 
-fn map_err<StorageT: Copy>(r: Result<Lexeme<StorageT>, Lexeme<StorageT>>)
+fn map_err(r: Result<DefaultLexeme<StorageT>, DefaultLexeme<StorageT>>)
     -> Result<Span, ()>
 {
     r.map(|x| x.span()).map_err(|_| ())
