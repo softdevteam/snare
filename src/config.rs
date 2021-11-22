@@ -2,7 +2,7 @@ use std::{fs::read_to_string, net::SocketAddr, path::Path, process, str::FromStr
 
 use crypto_mac::{InvalidKeyLength, NewMac};
 use hmac::Hmac;
-use lrlex::lrlex_mod;
+use lrlex::{lrlex_mod, DefaultLexeme};
 use lrpar::{lrpar_mod, NonStreamingLexer, Span};
 use regex::Regex;
 use secstr::SecStr;
@@ -155,7 +155,7 @@ pub struct GitHub {
 
 impl GitHub {
     fn parse(
-        lexer: &dyn NonStreamingLexer<StorageT>,
+        lexer: &dyn NonStreamingLexer<DefaultLexeme<StorageT>, StorageT>,
         options: Vec<config_ast::ProviderOption>,
         ast_matches: Vec<config_ast::Match>,
     ) -> Result<Self, String> {
@@ -416,7 +416,11 @@ impl Default for Match {
 }
 
 /// Return an error message pinpointing `span` as the culprit.
-fn error_at_span(lexer: &dyn NonStreamingLexer<StorageT>, span: Span, msg: &str) -> String {
+fn error_at_span(
+    lexer: &dyn NonStreamingLexer<DefaultLexeme<StorageT>, StorageT>,
+    span: Span,
+    msg: &str,
+) -> String {
     let ((line_off, col), _) = lexer.line_col(span);
     let code = lexer
         .span_lines_str(span)
