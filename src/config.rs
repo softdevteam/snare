@@ -1,7 +1,7 @@
 use std::{fs::read_to_string, net::SocketAddr, path::Path, process, str::FromStr};
 
-use crypto_mac::{InvalidKeyLength, NewMac};
-use hmac::Hmac;
+use crypto_common::InvalidLength;
+use hmac::{Hmac, Mac};
 use lrlex::{lrlex_mod, DefaultLexeme};
 use lrpar::{lrpar_mod, NonStreamingLexer, Span};
 use regex::Regex;
@@ -241,7 +241,7 @@ impl GitHub {
                         // length key.
                         match Hmac::<Sha1>::new_from_slice(sec_str.as_bytes()) {
                             Ok(_) => (),
-                            Err(InvalidKeyLength) => {
+                            Err(InvalidLength) => {
                                 return Err(error_at_span(lexer, span, "Invalid secret key length"))
                             }
                         }

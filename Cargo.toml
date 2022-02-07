@@ -19,10 +19,11 @@ rerun_except = "1.0"
 
 [dependencies]
 cfgrammar = "0.11"
+crypto-common = "0.1"
 crypto-mac = "0.11"
 getopts = "0.2"
 hex = "0.4"
-hmac = "0.11"
+hmac = "0.12"
 hyper = { version = "0.14", features = ["http1", "server", "tcp"] }
 json = "0.12"
 libc = "0.2"
@@ -33,7 +34,7 @@ num_cpus = "1.12"
 percent-encoding = "2.1"
 regex = "1.5"
 secstr = "0.4"
-sha-1 = "0.9"
+sha-1 = "0.10"
 signal-hook = "0.3"
 tempfile = "3.1"
 tokio = { version = "1.12", features = ["full"] }
