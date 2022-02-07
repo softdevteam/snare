@@ -1,7 +1,6 @@
 use std::{convert::Infallible, sync::Arc, time::Instant};
 
-use crypto_mac::{Mac, NewMac};
-use hmac::Hmac;
+use hmac::{Hmac, Mac};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{self, body::Bytes, server::conn::AddrIncoming, Body, Request, Response, StatusCode};
 use percent_encoding::percent_decode;
@@ -137,7 +136,7 @@ fn authenticate(secret: &SecStr, sig: String, pl: Bytes) -> bool {
     let mut mac = Hmac::<Sha1>::new_from_slice(secret.unsecure()).unwrap();
     mac.update(&*pl);
     match hex::decode(sig) {
-        Ok(d) => mac.verify(&d).is_ok(),
+        Ok(d) => mac.verify_slice(&d).is_ok(),
         Err(_) => false,
     }
 }
