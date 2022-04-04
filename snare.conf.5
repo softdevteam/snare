@@ -253,7 +253,6 @@ For example, for the following configuration file:
 .Bd -literal -offset 4n
 listen = "<address>:<port>";
 github {
-  reposdir = "<path>";
   match ".*" {
     cmd = "/path/to/prps/%o/%r %e %j";
     errorcmd = "cat %s | mailx -s \\"snare error: github.com/%o/%r\\" abc@def.com";
