@@ -1,3 +1,11 @@
+# snare 0.4.6 (2022-02-09)
+
+* Update dependencies, including a security fix to the regex crate.
+
+* Remove mention of `reposdir` from the documentation: it is deprecated and
+  using it causes a warning.
+
+
 # snare 0.4.5 (2022-02-09)
 
 * Update dependencies.
