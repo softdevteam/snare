@@ -18,6 +18,10 @@ a given repository, it authenticates the request, and then executes a
 user-defined
 .Dq per-repo program
 with information about the webhook event.
+The
+.Dq per-repo program
+is run in a freshly created temporary directory which is removed once it has
+completed.
 .Pp
 The options are as follows:
 .Bl -tag -width Ds

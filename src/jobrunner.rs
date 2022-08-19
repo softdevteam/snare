@@ -485,7 +485,7 @@ impl JobRunner {
         }
     }
 
-    /// If the user has specified an email address, send the contents of
+    /// Run the user's errorcmd (if they've specified one).
     fn run_errorcmd(&self, job: &Job) -> Option<Child> {
         if let Some(raw_errorcmd) = &job.rconf.errorcmd {
             let errorcmd = errorcmd_replace(
