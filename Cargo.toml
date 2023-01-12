@@ -12,13 +12,13 @@ keywords = ["github", "webhook"]
 edition = "2018"
 
 [build-dependencies]
-cfgrammar = "0.11"
-lrlex = "0.11"
-lrpar = "0.11"
+cfgrammar = "0.12"
+lrlex = "0.12"
+lrpar = "0.12"
 rerun_except = "1.0"
 
 [dependencies]
-cfgrammar = "0.11"
+cfgrammar = "0.12"
 crypto-common = "0.1"
 crypto-mac = "0.11"
 getopts = "0.2"
@@ -27,17 +27,17 @@ hmac = "0.12"
 hyper = { version = "0.14", features = ["http1", "server", "tcp"] }
 json = "0.12"
 libc = "0.2"
-lrlex = "0.11"
-lrpar = "0.11"
+lrlex = "0.12"
+lrpar = "0.12"
 nix = "0.23"
-num_cpus = "1.12"
-percent-encoding = "2.1"
-regex = "1.5"
+num_cpus = "1"
+percent-encoding = "2"
+regex = "1.7"
 secstr = "0.5"
 sha-1 = "0.10"
 signal-hook = "0.3"
-tempfile = "3.1"
-tokio = { version = "1.12", features = ["full"] }
+tempfile = "3"
+tokio = { version = "1.24", features = ["full"] }
 users = "0.11"
 
 [profile.release]
