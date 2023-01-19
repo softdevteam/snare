@@ -4,6 +4,7 @@
 //! commands we track only exit status.
 
 #![allow(clippy::cognitive_complexity)]
+#![allow(clippy::result_large_err)]
 
 use std::{
     collections::HashMap,
