@@ -1,5 +1,6 @@
 %start TopLevelOptions
 %avoid_insert "INT" "STRING"
+%expect-unused Unknown "UNKNOWN"
 
 %%
 
@@ -34,11 +35,6 @@ OptionsOrMatches -> Result<(Vec<ProviderOption>, Vec<Match>), ()>:
 
 ProviderOption -> Result<ProviderOption, ()>:
     "REPOSDIR" "=" "STRING" ";" { Ok(ProviderOption::ReposDir(map_err($3)?)) }
-  ;
-
-Matches -> Result<Vec<Match>, ()>:
-    Matches Match { flattenr($1, $2) }
-  | { Ok(vec![]) }
   ;
 
 Match -> Result<Match, ()>:
