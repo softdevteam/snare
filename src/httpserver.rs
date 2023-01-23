@@ -164,7 +164,7 @@ async fn parse(req: Request<Body>) -> Result<(Bytes, String, String, String), ()
         .decode_utf8()
         .map_err(|_| ())?
         .into_owned();
-    let jv = json::parse(&json_str).map_err(|_| ())?;
+    let jv: serde_json::Value = serde_json::from_str(&json_str).map_err(|_| ())?;
     let owner_json = &jv["repository"]["owner"]["login"];
     let repo_json = &jv["repository"]["name"];
     match (owner_json.as_str(), repo_json.as_str()) {
