@@ -1,3 +1,8 @@
+# snare 0.4.7 (2023-02-06)
+
+* Update dependencies, including moving from the unmaintained `json` crate to `serde_json`.
+
+
 # snare 0.4.6 (2022-02-09)
 
 * Update dependencies, including a security fix to the regex crate.
