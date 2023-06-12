@@ -31,6 +31,7 @@ lrpar = "0.13"
 nix = "0.26"
 num_cpus = "1"
 percent-encoding = "2"
+pwd = "1"
 regex = "1.7"
 secstr = "0.5"
 serde_json = "1"
@@ -38,7 +39,6 @@ sha-1 = "0.10"
 signal-hook = "0.3"
 tempfile = "3"
 tokio = { version = "1.24", features = ["full"] }
-users = "0.11"
 
 [profile.release]
 opt-level = 3

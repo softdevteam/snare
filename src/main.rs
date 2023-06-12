@@ -33,8 +33,8 @@ use nix::{
     fcntl::OFlag,
     unistd::{daemon, pipe2, setresgid, setresuid, Gid, Uid},
 };
+use pwd::Passwd;
 use tokio::runtime::Runtime;
-use users::{get_user_by_name, os::unix::UserExt};
 
 use config::Config;
 use queue::Queue;
@@ -139,21 +139,29 @@ fn search_snare_conf() -> Option<PathBuf> {
     None
 }
 
+fn user_from_name(n: &str) -> Option<Passwd> {
+    match Passwd::from_name(n) {
+        Ok(Some(x)) => Some(x),
+        Ok(None) => None,
+        Err(e) => fatal_err(false, &format!("Can't access user information for {n}"), e),
+    }
+}
+
 /// If the config specified a 'user' then switch to that and update $HOME and $USER appropriately.
 /// This function must not be called after daemonisation.
 fn change_user(conf: &Config) {
     match conf.user {
-        Some(ref user) => match get_user_by_name(&user) {
+        Some(ref user) => match user_from_name(user) {
             Some(u) => {
-                let gid = Gid::from_raw(u.primary_group_id());
+                let gid = Gid::from_raw(u.gid);
                 if let Err(e) = setresgid(gid, gid, gid) {
                     fatal_err(false, &format!("Can't switch to group '{}'", user), e);
                 }
-                let uid = Uid::from_raw(u.uid());
+                let uid = Uid::from_raw(u.uid);
                 if let Err(e) = setresuid(uid, uid, uid) {
                     fatal_err(false, &format!("Can't switch to user '{}'", user), e);
                 }
-                env::set_var("HOME", u.home_dir());
+                env::set_var("HOME", u.dir);
                 env::set_var("USER", user);
             }
             None => fatal(false, &format!("Unknown user '{}'", user)),
