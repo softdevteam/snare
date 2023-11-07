@@ -18,7 +18,7 @@ PREFIX=test_install make install
 test -f test_install/bin/snare
 
 which cargo-deny | cargo install cargo-deny || true
-if [ "X`which cargo-deny`" != "X"]; then
+if cargo deny --version 2>&1 > /dev/null; then
     cargo-deny check license
 else
     echo "Warning: couldn't run cargo-deny" > /dev/stderr
