@@ -221,7 +221,7 @@ impl JobRunner {
                                     job.rconf.errorcmd.as_ref().unwrap()
                                 ));
                             } else if let Some(errorchild) = self.run_errorcmd(job) {
-                                let mut job = &mut self.running[i].as_mut().unwrap();
+                                let job = &mut self.running[i].as_mut().unwrap();
                                 job.child = errorchild;
                                 job.is_errorcmd = true;
                                 continue;
