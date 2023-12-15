@@ -1,175 +1,234 @@
-use std::{convert::Infallible, sync::Arc, time::Instant};
+use std::{
+    collections::HashMap,
+    error::Error,
+    io::{BufRead, BufReader, Read, Write},
+    net::{Shutdown, TcpListener, TcpStream},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    thread,
+    time::{Duration, Instant},
+};
 
 use hmac::{Hmac, Mac};
-use hyper::service::{make_service_fn, service_fn};
-use hyper::{self, body::Bytes, server::conn::AddrIncoming, Body, Request, Response, StatusCode};
 use percent_encoding::percent_decode;
 use secstr::SecStr;
-use sha1::Sha1;
+use sha2::Sha256;
 
 use crate::{queue::QueueJob, Snare};
 
-pub(crate) async fn serve(server: hyper::server::Builder<AddrIncoming>, snare: Arc<Snare>) {
-    let make_svc = make_service_fn(|_| {
-        let snare = Arc::clone(&snare);
-        async { Ok::<_, Infallible>(service_fn(move |req| handle(req, Arc::clone(&snare)))) }
-    });
+/// How many connections to accept simultaneously? Limiting this number stops attackers from
+/// causing us to use too many resources.
+static MAX_SIMULTANEOUS_CONNECTIONS: usize = 16;
+/// How long to try reading/writing from a socket before we assume it's died.
+static NET_TIMEOUT: Duration = Duration::from_secs(10);
+/// The maximum payload size we'll accept from a remote in bytes. The main reason to limit this is
+/// to stop large numbers of requests causing us to run out of memory.
+static MAX_HTTP_BODY_SIZE: usize = 64 * 1024;
 
-    if let Err(e) = server.serve(make_svc).await {
-        snare.fatal_err("Couldn't start HTTP server", e);
+pub(crate) fn serve(snare: Arc<Snare>) -> Result<(), Box<dyn Error>> {
+    let listener = TcpListener::bind(snare.conf.lock().unwrap().listen)?;
+    let active = Arc::new(AtomicUsize::new(0));
+    for mut stream in listener.incoming().flatten() {
+        // We want to keep a limit on how many threads are started concurrently, so that an
+        // attacker can't DOS the machine. `active` keeps track of how many threads are (or are
+        // just about to be) active. Since the common case is that we haven't hit the limit, we
+        // speculatively `fetch_add` and, if that fails, we then "undo" that with a `fetch_sub`,
+        // wait and try again. [Since the main thread is the only thread incrementing the count
+        // we could do things like a `load`, a check, and then a `fetch_add`, but that requires
+        // two atomic operations, so is slower, and also more fragile if we refactor the code in
+        // the future.]
+        while active.fetch_add(1, Ordering::Relaxed) > MAX_SIMULTANEOUS_CONNECTIONS {
+            active.fetch_sub(1, Ordering::Relaxed);
+            // We only expect to hit this loop if someone is doing something very odd, so the time
+            // we wait isn't particularly important.
+            thread::sleep(Duration::from_millis(100));
+        }
+
+        let active = Arc::clone(&active);
+        let snare = Arc::clone(&snare);
+        thread::spawn(move || {
+            match request(&snare, &mut stream) {
+                Ok(()) => {
+                    http_200(&mut stream);
+                }
+                Err(e) => {
+                    snare.error_err("Processing HTTP request", e);
+                    http_400(&mut stream)
+                }
+            }
+            active.fetch_sub(1, Ordering::Relaxed);
+        });
     }
+    Ok(())
 }
 
-async fn handle(req: Request<Body>, snare: Arc<Snare>) -> Result<Response<Body>, Infallible> {
-    let mut res = Response::new(Body::empty());
+fn request(snare: &Arc<Snare>, stream: &mut TcpStream) -> Result<(), Box<dyn Error>> {
+    stream.set_read_timeout(Some(NET_TIMEOUT))?;
+    stream.set_write_timeout(Some(NET_TIMEOUT))?;
     let req_time = Instant::now();
-    let event_type = match req.headers().get("X-GitHub-Event") {
-        Some(hv) => match hv.to_str() {
-            Ok(s) => {
-                if !valid_github_event(s) {
-                    snare.error(&format!("Invalid GitHub event type '{}'.", s));
-                    *res.status_mut() = StatusCode::BAD_REQUEST;
-                    return Ok(res);
-                }
-                s.to_owned()
-            }
-            Err(_) => {
-                *res.status_mut() = StatusCode::BAD_REQUEST;
-                return Ok(res);
-            }
-        },
-        None => {
-            *res.status_mut() = StatusCode::BAD_REQUEST;
-            return Ok(res);
-        }
+    let (headers, body) = parse_get(stream)?;
+    stream.shutdown(Shutdown::Read)?;
+
+    let event_type = headers
+        .get("x-github-event")
+        .ok_or_else(|| "X-Github-Event header missing".to_owned())?;
+    if !valid_github_event(event_type) {
+        return Err("Invalid event type".into());
+    }
+    let sig = match headers
+        .get("x-hub-signature-256")
+        .and_then(|s| s.split_once('='))
+    {
+        Some(("sha256", sig)) => Some(sig),
+        Some(_) => return Err("Incorrectly formatted X-Hub-Signature-256 header".into()),
+        None => None,
     };
 
-    // Extract the string 'def' from "X-Hub-Signature: abc=def" if the header is present.
-    let sig = if req.headers().contains_key("X-Hub-Signature") {
-        if let Some(sig) = get_hub_sig(&req) {
-            Some(sig)
-        } else {
-            *res.status_mut() = StatusCode::BAD_REQUEST;
-            return Ok(res);
-        }
-    } else {
-        None
+    if !body.starts_with("payload=".as_bytes()) {
+        return Err("Payload does not start with 'payload='".into());
+    }
+    let json_str = percent_decode(&body[8..]).decode_utf8()?.to_string();
+    let jv = serde_json::from_str::<serde_json::Value>(&json_str)?;
+    let (owner, repo) = match (
+        &jv["repository"]["owner"]["login"].as_str(),
+        &jv["repository"]["name"].as_str(),
+    ) {
+        (Some(o), Some(r)) => (o.to_owned(), r.to_owned()),
+        _ => return Err("Invalid JSON".into()),
     };
 
-    let (pl, json_str, owner, repo) = match parse(req).await {
-        Ok((pl, j, o, r)) => (pl, j, o, r),
-        Err(_) => {
-            *res.status_mut() = StatusCode::BAD_REQUEST;
-            return Ok(res);
-        }
-    };
-
-    if !valid_github_ownername(&owner) {
-        snare.error(&format!("Invalid GitHub owner '{}'.", &owner));
-        *res.status_mut() = StatusCode::BAD_REQUEST;
-        return Ok(res);
-    } else if !valid_github_reponame(&repo) {
-        snare.error(&format!("Invalid GitHub repository '{}'.", &repo));
-        *res.status_mut() = StatusCode::BAD_REQUEST;
-        return Ok(res);
+    if !valid_github_ownername(owner) {
+        return Err(format!("Invalid GitHub owner '{}'.", &owner).into());
+    }
+    if !valid_github_reponame(repo) {
+        return Err(format!("Invalid GitHub repository '{}'.", &repo).into());
     }
 
     let conf = snare.conf.lock().unwrap();
-    let (rconf, secret) = conf.github.repoconfig(&owner, &repo);
+    let (rconf, secret) = conf.github.repoconfig(owner, repo);
 
     match (secret, sig) {
         (Some(secret), Some(sig)) => {
-            if !authenticate(secret, sig, pl) {
-                snare.error(&format!("Authentication failed for {}/{}.", owner, repo));
-                *res.status_mut() = StatusCode::UNAUTHORIZED;
-                return Ok(res);
+            if !authenticate(secret, sig, &body) {
+                return Err(format!("Authentication failed for {}/{}.", owner, repo).into());
             }
         }
         (Some(_), None) => {
-            snare.error(&format!("Request was unsigned for {}/{}.", owner, repo));
-            *res.status_mut() = StatusCode::UNAUTHORIZED;
-            return Ok(res);
+            return Err("Secret specified but request unsigned".into());
         }
         (None, Some(_)) => {
-            snare.error(&format!(
+            return Err(format!(
                 "Request was signed but no secret was specified for {}/{}.",
                 owner, repo
-            ));
-            *res.status_mut() = StatusCode::UNAUTHORIZED;
-            return Ok(res);
+            )
+            .into());
         }
         (None, None) => (),
     }
+    drop(conf);
 
     if event_type == "ping" {
-        *res.status_mut() = StatusCode::OK;
-        return Ok(res);
+        return Ok(());
     }
 
     let repo_id = format!("github/{}/{}", owner, repo);
-    let qj = QueueJob::new(repo_id, owner, repo, req_time, event_type, json_str, rconf);
+    let qj = QueueJob::new(
+        repo_id,
+        owner.to_owned(),
+        repo.to_owned(),
+        req_time,
+        event_type.to_owned(),
+        json_str,
+        rconf,
+    );
     (*snare.queue.lock().unwrap()).push_back(qj);
-    *res.status_mut() = StatusCode::OK;
     // If the write fails, it almost certainly means that the pipe is full i.e. the runner
     // thread will be notified anyway. If something else happens to have gone wrong, then
     // we (and the OS) are probably in deep trouble anyway...
     nix::unistd::write(snare.event_write_fd, &[0]).ok();
-    Ok(res)
+    Ok(())
 }
 
-/// Extract the string 'def' from "X-Hub-Signature: abc=def"
-fn get_hub_sig(req: &Request<Body>) -> Option<String> {
-    req.headers()
-        .get("X-Hub-Signature")
-        .and_then(|s| match s.to_str() {
-            Ok(s) => Some(s),
-            Err(_) => None,
-        })
-        .and_then(|s| s.split('=').nth(1))
-        .map(|s| s.to_owned())
+/// A very literal, and rather unforgiving, implementation of RFC2616 (HTTP/1.1), returning the URL
+/// of GET requests: returns `Err` for anything else.
+fn parse_get(stream: &mut TcpStream) -> Result<(HashMap<String, String>, Vec<u8>), Box<dyn Error>> {
+    let mut rdr = BufReader::new(stream);
+    let mut req_line = String::new();
+    rdr.read_line(&mut req_line)?;
+
+    // First the request line:
+    //   Request-Line   = Method SP Request-URI SP HTTP-Version CRLF
+    // where Method = "POST" and `SP` is a single space character.
+    let req_line_sp = req_line.split(' ').collect::<Vec<_>>();
+    if !matches!(req_line_sp.as_slice(), &["POST", _, _]) {
+        return Err("Not a POST query".into());
+    }
+
+    // Consume rest of HTTP request
+    let mut headers: Vec<String> = Vec::new();
+    loop {
+        let mut line = String::new();
+        rdr.read_line(&mut line)?;
+        if line.as_str().trim().is_empty() {
+            break;
+        }
+        match line.chars().next() {
+            Some(' ') | Some('\t') => {
+                // Continuation of previous header
+                match headers.last_mut() {
+                    Some(x) => {
+                        // Not calling `trim_start` means that the two joined lines have at least
+                        // one space|tab between them.
+                        x.push_str(line.as_str().trim_end());
+                    }
+                    None => return Err("Malformed HTTP header".into()),
+                }
+            }
+            _ => headers.push(line.as_str().trim_end().to_owned()),
+        }
+    }
+    let mut headers_map = HashMap::with_capacity(headers.len());
+    for x in headers {
+        match x.splitn(2, ':').collect::<Vec<_>>().as_slice() {
+            &[k, v] => {
+                headers_map.insert(k.to_lowercase(), v.trim_start().to_owned());
+            }
+            _ => return Err("Malformed HTTP headers".into()),
+        }
+    }
+
+    let len = headers_map
+        .get("content-length")
+        .ok_or_else(|| "Missing 'Content-Length' header".to_owned())?
+        .parse::<usize>()?;
+    if len > MAX_HTTP_BODY_SIZE {
+        return Err(format!("Body of {len} bytes too big").into());
+    }
+    let mut body = vec![0; len];
+    rdr.read_exact(&mut body)?;
+
+    Ok((headers_map, body))
+}
+
+fn http_200(stream: &mut TcpStream) {
+    stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n").ok();
+}
+
+fn http_400(stream: &mut TcpStream) {
+    stream.write_all(b"HTTP/1.1 400\r\n\r\n").ok();
 }
 
 /// Authenticate this request and if successful return `true` (where "success" also includes "the
 /// user didn't specify a secret for this repository").
-fn authenticate(secret: &SecStr, sig: String, pl: Bytes) -> bool {
+fn authenticate(secret: &SecStr, sig: &str, pl: &[u8]) -> bool {
     // We've already checked the key length when creating the config, so the unwrap() is safe.
-    let mut mac = Hmac::<Sha1>::new_from_slice(secret.unsecure()).unwrap();
-    mac.update(&pl);
+    let mut mac = Hmac::<Sha256>::new_from_slice(secret.unsecure()).unwrap();
+    mac.update(pl);
     match hex::decode(sig) {
         Ok(d) => mac.verify_slice(&d).is_ok(),
         Err(_) => false,
-    }
-}
-
-/// Parse `pl` into JSON, and return `(<JSON as a String>, <repo owner>, <repo name>)`.
-async fn parse(req: Request<Body>) -> Result<(Bytes, String, String, String), ()> {
-    let pl = hyper::body::to_bytes(req.into_body())
-        .await
-        .map_err(|_| ())?;
-
-    // The body sent by GitHub starts "payload=" before then containing JSON encoded using the URL
-    // percent format.
-
-    // First check that the string really does begin "payload=".
-    if pl.len() < 8 {
-        return Err(());
-    }
-    match std::str::from_utf8(&pl[..8]) {
-        Ok(s) if s == "payload=" => (),
-        _ => return Err(()),
-    }
-
-    // Decode the JSON and extract the owner and repo.
-    let json_str = percent_decode(&pl[8..])
-        .decode_utf8()
-        .map_err(|_| ())?
-        .into_owned();
-    let jv: serde_json::Value = serde_json::from_str(&json_str).map_err(|_| ())?;
-    let owner_json = &jv["repository"]["owner"]["login"];
-    let repo_json = &jv["repository"]["name"];
-    match (owner_json.as_str(), repo_json.as_str()) {
-        (Some(o), Some(r)) => Ok((pl, json_str, o.to_owned(), r.to_owned())),
-        _ => Err(()),
     }
 }
 

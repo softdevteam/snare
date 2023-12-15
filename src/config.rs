@@ -6,7 +6,7 @@ use lrlex::{lrlex_mod, DefaultLexerTypes, LRNonStreamingLexer};
 use lrpar::{lrpar_mod, NonStreamingLexer, Span};
 use regex::Regex;
 use secstr::SecStr;
-use sha1::Sha1;
+use sha2::Sha256;
 
 use crate::config_ast;
 
@@ -239,7 +239,7 @@ impl GitHub {
                         // invalid length despite the API suggesting that it can be... We're
                         // conservative and assume that it really is possible to have an invalid
                         // length key.
-                        match Hmac::<Sha1>::new_from_slice(sec_str.as_bytes()) {
+                        match Hmac::<Sha256>::new_from_slice(sec_str.as_bytes()) {
                             Ok(_) => (),
                             Err(InvalidLength) => {
                                 return Err(error_at_span(lexer, span, "Invalid secret key length"))
