@@ -177,3 +177,128 @@ github {{
         exit_success,
     )
 }
+
+#[test]
+fn bad_sha256() -> Result<(), Box<dyn Error>> {
+    // Takes the SHA256 from [full_request], alters just the last digit, and checks that snare
+    // doesn't execute any commands (so, by proxy, we assume that snare doesn't authenticate the
+    // request).
+
+    let td = Builder::new().tempdir_in(env!("CARGO_TARGET_TMPDIR"))?;
+    let mut tp = td.path().to_owned();
+    tp.push("t");
+    let tps = tp.as_path().to_str().unwrap();
+    let req = r#"POST /payload HTTP/1.1
+Host: 127.0.0.1:28084
+Content-Length: 104
+X-GitHub-Delivery: 72d3162e-cc78-11e3-81ab-4c9367dc0958
+X-Hub-Signature-256: sha256=292e1ce3568fecd98589c71938e19afee9b04b7fe11886d5478d802416bbde67
+User-Agent: GitHub-Hookshot/044aadd
+Content-Type: application/json
+X-GitHub-Event: issues
+X-GitHub-Hook-ID: 292430182
+X-GitHub-Hook-Installation-Target-ID: 79929171
+X-GitHub-Hook-Installation-Target-Type: repository
+
+payload={
+  "repository": {
+    "owner": {
+      "login": "testuser"
+    },
+    "name": "testrepo"
+  }
+}"#;
+
+    run(
+        &format!(
+            r#"listen = "127.0.0.1:28085";
+github {{
+  match ".*" {{
+    cmd = "touch {tps}";
+    secret = "secretsecret";
+  }}
+}}"#
+        ),
+        move |_| {
+            assert!(!tp.is_file());
+            let mut stream = TcpStream::connect("127.0.0.1:28085")?;
+            stream.write(req.as_bytes())?;
+            stream.shutdown(Shutdown::Write)?;
+            let mut s = String::new();
+            stream.read_to_string(&mut s)?;
+            if s.starts_with("HTTP/1.1 400") {
+                // We want to wait for snare to fully initialise: there is no way of doing that other than
+                // waiting and hoping.
+                sleep(SNARE_PAUSE);
+                assert!(!tp.is_file());
+                Ok(())
+            } else {
+                Err(format!("Received HTTP response '{s}'").into())
+            }
+        },
+        exit_success,
+    )
+}
+
+#[test]
+fn wrong_secret() -> Result<(), Box<dyn Error>> {
+    // Takes the example from [full_request], alters the client-side secret, and checks that this
+    // causes snare not execute any commands (so, by proxy, we assume that authentication failed).
+
+    let td = Builder::new().tempdir_in(env!("CARGO_TARGET_TMPDIR"))?;
+    let mut tp = td.path().to_owned();
+    tp.push("t");
+    let tps = tp.as_path().to_str().unwrap();
+    // Example secret and payload from
+    // https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries#testing-the-webhook-payload-validation
+    let req = r#"POST /payload HTTP/1.1
+Host: 127.0.0.1:28084
+Content-Length: 104
+X-GitHub-Delivery: 72d3162e-cc78-11e3-81ab-4c9367dc0958
+X-Hub-Signature-256: sha256=292e1ce3568fecd98589c71938e19afee9b04b7fe11886d5478d802416bbde66
+User-Agent: GitHub-Hookshot/044aadd
+Content-Type: application/json
+X-GitHub-Event: issues
+X-GitHub-Hook-ID: 292430182
+X-GitHub-Hook-Installation-Target-ID: 79929171
+X-GitHub-Hook-Installation-Target-Type: repository
+
+payload={
+  "repository": {
+    "owner": {
+      "login": "testuser"
+    },
+    "name": "testrepo"
+  }
+}"#;
+
+    run(
+        &format!(
+            r#"listen = "127.0.0.1:28086";
+github {{
+  match ".*" {{
+    cmd = "touch {tps}";
+    secret = "secretsecretsecret";
+  }}
+}}"#
+        ),
+        move |_| {
+            assert!(!tp.is_file());
+            let mut stream = TcpStream::connect("127.0.0.1:28086")?;
+            stream.write(req.as_bytes())?;
+            stream.shutdown(Shutdown::Write)?;
+            let mut s = String::new();
+            stream.read_to_string(&mut s)?;
+            if s.starts_with("HTTP/1.1 400") {
+                // We want to wait for snare to fully initialise: there is no way of doing that other than
+                // waiting and hoping.
+                sleep(SNARE_PAUSE);
+                assert!(!tp.is_file());
+                Ok(())
+            } else {
+                Err(format!("Received HTTP response '{s}'").into())
+            }
+        },
+        exit_success,
+    )
+}
