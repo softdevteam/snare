@@ -58,7 +58,7 @@ struct JobRunner {
 
 impl JobRunner {
     fn new(snare: Arc<Snare>) -> Result<Self, Box<dyn Error>> {
-        let shell = env::var("SHELL")?;
+        let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned());
         let maxjobs = snare.conf.lock().unwrap().maxjobs;
         assert!(maxjobs <= (std::usize::MAX - 1) / 2);
         let mut running = Vec::with_capacity(maxjobs);
