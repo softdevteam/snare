@@ -10,7 +10,7 @@ use std::{
     net::{Shutdown, TcpStream},
     os::unix::process::ExitStatusExt,
     panic::{catch_unwind, resume_unwind, UnwindSafe},
-    process::{ExitStatus, Stdio},
+    process::Stdio,
     thread::sleep,
     time::Duration,
 };
@@ -31,11 +31,10 @@ static SNARE_PAUSE: Duration = Duration::from_secs(1);
 /// to stdout/stderr.
 static SNARE_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
 
-fn run<F, G, H>(cfg: &str, req: F, check_response: G, check_exit: H) -> Result<(), Box<dyn Error>>
+fn run<F, G>(cfg: &str, req: F, check_response: G) -> Result<(), Box<dyn Error>>
 where
     F: FnOnce(u16) -> Result<String, Box<dyn Error>> + UnwindSafe + 'static,
     G: FnOnce(String) -> Result<(), Box<dyn Error>> + UnwindSafe + 'static,
-    H: FnOnce(ExitStatus) -> Result<(), Box<dyn Error>> + 'static,
 {
     let mut tc = Builder::new().tempfile_in(env!("CARGO_TARGET_TMPDIR"))?;
     write!(tc, "{cfg}")?;
@@ -104,16 +103,14 @@ where
 
     match sn.wait_timeout(SNARE_WAIT_TIMEOUT) {
         Err(e) => Err(e.into()),
-        Ok(Some(ec)) => check_exit(ec),
+        Ok(Some(es)) => {
+            if let Some(Signal::SIGTERM) = es.signal().map(|x| Signal::try_from(x).unwrap()) {
+                Ok(())
+            } else {
+                Err(format!("Expected successful exit but got '{es:?}'").into())
+            }
+        }
         Ok(None) => Err("timeout waiting for snare to exit".into()),
-    }
-}
-
-fn exit_success(es: ExitStatus) -> Result<(), Box<dyn Error>> {
-    if let Some(Signal::SIGTERM) = es.signal().map(|x| Signal::try_from(x).unwrap()) {
-        Ok(())
-    } else {
-        Err(format!("Expected successful exit but got '{es:?}'").into())
     }
 }
 
@@ -125,7 +122,6 @@ github {
 }"#,
         |_| Ok(String::new()),
         |_| Ok(()),
-        exit_success,
     )
 }
 
@@ -183,7 +179,6 @@ payload={{
                 Err(format!("Received HTTP response '{response}'").into())
             }
         },
-        exit_success,
     )
 }
 
@@ -242,7 +237,6 @@ payload={{
                 Err(format!("Received HTTP response '{response}'").into())
             }
         },
-        exit_success,
     )
 }
 
@@ -300,6 +294,5 @@ payload={{
                 Err(format!("Received HTTP response '{response}'").into())
             }
         },
-        exit_success,
     )
 }
