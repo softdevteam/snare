@@ -6,6 +6,8 @@
 //! an "event pipe" to wake up the `jobrunner` when the queue has new elements. We also wake up the
 //! `jobrunner` on SIGHUP and SIGCHLD.
 
+#![allow(clippy::type_complexity)]
+
 mod config;
 mod config_ast;
 mod httpserver;
@@ -27,14 +29,12 @@ use std::{
 };
 
 use getopts::Options;
-use hyper::Server;
 use libc::{c_char, openlog, syslog, LOG_CONS, LOG_CRIT, LOG_DAEMON, LOG_ERR};
 use nix::{
     fcntl::OFlag,
     unistd::{daemon, pipe2, setresgid, setresuid, Gid, Uid},
 };
 use pwd::Passwd;
-use tokio::runtime::Runtime;
 
 use config::Config;
 use queue::Queue;
@@ -301,16 +301,5 @@ pub fn main() {
         Err(e) => snare.fatal_err("Couldn't start runner thread", e),
     }
 
-    let rt = match Runtime::new() {
-        Ok(rt) => rt,
-        Err(e) => snare.fatal_err("Couldn't start tokio runtime.", e),
-    };
-    rt.block_on(async {
-        let server = match Server::try_bind(&snare.conf.lock().unwrap().listen) {
-            Ok(s) => s,
-            Err(e) => snare.fatal_err("Couldn't bind to address", e),
-        };
-
-        httpserver::serve(server, Arc::clone(&snare)).await;
-    });
+    httpserver::serve(snare).unwrap();
 }

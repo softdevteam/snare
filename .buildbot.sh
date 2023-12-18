@@ -12,6 +12,7 @@ export PATH=`pwd`/.cargo/bin/:$PATH
 
 cargo fmt --all -- --check
 cargo test
+cargo test --release
 
 mkdir test_install
 PREFIX=test_install make install
