@@ -161,7 +161,7 @@ impl GitHub {
     ) -> Result<Self, String> {
         let mut matches = vec![Match::default()];
 
-        if let Some(config_ast::ProviderOption::ReposDir(span)) = options.get(0) {
+        if let Some(config_ast::ProviderOption::ReposDir(span)) = options.first() {
             return Err(error_at_span(lexer, *span, "Replace:\n  GitHub { reposdir = \"/path/to/reposdir\"; }\nwith:\n  GitHub {\n    match \".*\" {\n      cmd = \"/path/to/reposdir/%o/%r %e %j\";\n    }\n  }"));
         }
 

@@ -66,7 +66,7 @@ impl Queue {
             }
             QueueKind::Parallel | QueueKind::Sequential => (),
         }
-        entry.or_insert_with(VecDeque::new).push_back(qj);
+        entry.or_default().push_back(qj);
     }
 
     /// Push an old request which has failed due to a temporary error back to the front of the
@@ -74,10 +74,7 @@ impl Queue {
     /// unnecessarily pushed on the queue (which could happen with the `Evict` queue kind), the
     /// lock on `self` should be held between calls to `pop` and `push_front`.
     pub fn push_front(&mut self, qj: QueueJob) {
-        self.q
-            .entry(qj.repo_id.clone())
-            .or_insert_with(VecDeque::new)
-            .push_front(qj);
+        self.q.entry(qj.repo_id.clone()).or_default().push_front(qj);
     }
 
     /// If the queue has a runnable entry, pop and return it, or `None` otherwise. Note that `None`
@@ -92,7 +89,7 @@ impl Queue {
         let mut earliest_time = None;
         let mut earliest_key = None;
         for (k, v) in self.q.iter() {
-            if let Some(qj) = v.get(0) {
+            if let Some(qj) = v.front() {
                 if let Some(et) = earliest_time {
                     if et > qj.req_time {
                         continue;
