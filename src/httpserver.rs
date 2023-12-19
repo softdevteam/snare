@@ -29,6 +29,13 @@ static MAX_HTTP_BODY_SIZE: usize = 64 * 1024;
 
 pub(crate) fn serve(snare: Arc<Snare>) -> Result<(), Box<dyn Error>> {
     let listener = TcpListener::bind(snare.conf.lock().unwrap().listen)?;
+    #[cfg(feature = "_internal_testing")]
+    {
+        if let Ok(p) = std::env::var("SNARE_DEBUG_PORT_PATH") {
+            std::fs::write(p, &listener.local_addr().unwrap().port().to_string()).unwrap();
+        }
+    }
+
     let active = Arc::new(AtomicUsize::new(0));
     for mut stream in listener.incoming().flatten() {
         // We want to keep a limit on how many threads are started concurrently, so that an

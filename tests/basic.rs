@@ -1,4 +1,3 @@
-use assert_cmd::prelude::*;
 use nix::{
     sys::signal::{kill, Signal},
     unistd::Pid,
@@ -6,11 +5,12 @@ use nix::{
 use std::{
     convert::{TryFrom, TryInto},
     error::Error,
+    fs::read_to_string,
     io::{Read, Write},
     net::{Shutdown, TcpStream},
     os::unix::process::ExitStatusExt,
     panic::{catch_unwind, resume_unwind, UnwindSafe},
-    process::{Child, Command, ExitStatus, Stdio},
+    process::Stdio,
     thread::sleep,
     time::Duration,
 };
@@ -31,26 +31,51 @@ static SNARE_PAUSE: Duration = Duration::from_secs(1);
 /// to stdout/stderr.
 static SNARE_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
 
-fn run<F, G>(cfg: &str, while_running: F, check_exit: G) -> Result<(), Box<dyn Error>>
+fn run<F, G>(cfg: &str, req: F, check_response: G) -> Result<(), Box<dyn Error>>
 where
-    F: FnOnce(&Child) -> Result<(), Box<dyn Error>> + UnwindSafe + 'static,
-    G: FnOnce(ExitStatus) -> Result<(), Box<dyn Error>> + 'static,
+    F: FnOnce(u16) -> Result<String, Box<dyn Error>> + UnwindSafe + 'static,
+    G: FnOnce(String) -> Result<(), Box<dyn Error>> + UnwindSafe + 'static,
 {
     let mut tc = Builder::new().tempfile_in(env!("CARGO_TARGET_TMPDIR"))?;
     write!(tc, "{cfg}")?;
-    let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME"))?;
+    let mut cmd = escargot::CargoBuild::new()
+        .bin("snare")
+        .current_release()
+        .current_target()
+        .no_default_features()
+        .features("_internal_testing")
+        .run()?
+        .command();
+    let tp = Builder::new().tempfile_in(env!("CARGO_TARGET_TMPDIR"))?;
+    cmd.env("SNARE_DEBUG_PORT_PATH", tp.path().to_str().unwrap());
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     cmd.args(["-d", "-c", tc.path().to_str().unwrap()]);
     let mut sn = cmd.spawn()?;
     // We want to wait for snare to fully initialise: there is no way of doing that other than
     // waiting and hoping.
     sleep(SNARE_PAUSE);
+
     // Try as hard as possible not to leave snare processes lurking around after the tests are run,
     // by sending them SIGTERM in as many cases as we reasonably can. Note that `catch_unwind` does
     // not guarantee to catch all panic-y situations, so this can never be perfect.
-    let r = catch_unwind(|| while_running(&sn));
-    kill(Pid::from_raw(sn.id().try_into()?), Signal::SIGTERM)?;
-    if let Err(_) | Ok(Err(_)) = r {
+    let r = catch_unwind(move || {
+        let port = read_to_string(tp.path()).unwrap().parse::<u16>().unwrap();
+
+        let req = req(port).unwrap();
+        let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        stream.write_all(req.as_bytes()).unwrap();
+        stream.shutdown(Shutdown::Write).unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).unwrap();
+
+        // We want to wait for snare to execute any actions that might come with the request. Again, we
+        // have no way of doing that other than waiting and hoping.
+        sleep(SNARE_PAUSE);
+        check_response(response).unwrap();
+    });
+
+    kill(Pid::from_raw(sn.id().try_into().unwrap()), Signal::SIGTERM).unwrap();
+    if r.is_err() {
         let ec = match sn.wait_timeout(SNARE_WAIT_TIMEOUT) {
             Err(e) => e.to_string(),
             Ok(None) => "stalled without exiting".to_owned(),
@@ -62,7 +87,7 @@ where
         let mut stdout = String::new();
         let mut stderr = String::new();
         sn.stdout.as_mut().unwrap().read_to_string(&mut stdout).ok();
-        if stdout.len() > 0 {
+        if !stdout.is_empty() {
             stdout.push('\n');
         }
         sn.stderr.as_mut().unwrap().read_to_string(&mut stderr).ok();
@@ -70,49 +95,34 @@ where
             "snare child process:\n  Exit status: {ec}\n\n  stdout:\n{stdout}\n  stderr:\n{stderr}"
         );
     }
+
     match r {
+        Ok(()) => (),
         Err(r) => resume_unwind(r),
-        Ok(Ok(_)) => (),
-        Ok(Err(e)) => return Err(e),
     }
 
     match sn.wait_timeout(SNARE_WAIT_TIMEOUT) {
         Err(e) => Err(e.into()),
-        Ok(Some(ec)) => check_exit(ec),
+        Ok(Some(es)) => {
+            if let Some(Signal::SIGTERM) = es.signal().map(|x| Signal::try_from(x).unwrap()) {
+                Ok(())
+            } else {
+                Err(format!("Expected successful exit but got '{es:?}'").into())
+            }
+        }
         Ok(None) => Err("timeout waiting for snare to exit".into()),
-    }
-}
-
-fn exit_success(es: ExitStatus) -> Result<(), Box<dyn Error>> {
-    if let Some(Signal::SIGTERM) = es.signal().map(|x| Signal::try_from(x).unwrap()) {
-        Ok(())
-    } else {
-        Err(format!("Expected successful exit but got '{es:?}'").into())
-    }
-}
-
-fn exit_error(es: ExitStatus) -> Result<(), Box<dyn Error>> {
-    if !es.success() {
-        Ok(())
-    } else {
-        Err(format!("Expected unsuccessful exit but got '{es:?}'").into())
     }
 }
 
 #[test]
 fn minimal_config() -> Result<(), Box<dyn Error>> {
     run(
-        r#"listen = "127.0.0.1:28083";
+        r#"listen = "127.0.0.1:0";
 github {
 }"#,
+        |_| Ok(String::new()),
         |_| Ok(()),
-        exit_success,
     )
-}
-
-#[test]
-fn bad_config() -> Result<(), Box<dyn Error>> {
-    run(r#""#, |_| Ok(()), exit_error)
 }
 
 #[test]
@@ -124,10 +134,23 @@ fn full_request() -> Result<(), Box<dyn Error>> {
     let mut tp = td.path().to_owned();
     tp.push("t");
     let tps = tp.as_path().to_str().unwrap();
+    assert!(!tp.is_file());
     // Example secret and payload from
     // https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries#testing-the-webhook-payload-validation
-    let req = r#"POST /payload HTTP/1.1
-Host: 127.0.0.1:28084
+    run(
+        &format!(
+            r#"listen = "127.0.0.1:0";
+github {{
+  match ".*" {{
+    cmd = "touch {tps}";
+    secret = "secretsecret";
+  }}
+}}"#
+        ),
+        move |port| {
+            Ok(format!(
+                r#"POST /payload HTTP/1.1
+Host: 127.0.0.1:{port}
 Content-Length: 104
 X-GitHub-Delivery: 72d3162e-cc78-11e3-81ab-4c9367dc0958
 X-Hub-Signature-256: sha256=292e1ce3568fecd98589c71938e19afee9b04b7fe11886d5478d802416bbde66
@@ -138,43 +161,24 @@ X-GitHub-Hook-ID: 292430182
 X-GitHub-Hook-Installation-Target-ID: 79929171
 X-GitHub-Hook-Installation-Target-Type: repository
 
-payload={
-  "repository": {
-    "owner": {
+payload={{
+  "repository": {{
+    "owner": {{
       "login": "testuser"
-    },
+    }},
     "name": "testrepo"
-  }
-}"#;
-
-    run(
-        &format!(
-            r#"listen = "127.0.0.1:28084";
-github {{
-  match ".*" {{
-    cmd = "touch {tps}";
-    secret = "secretsecret";
   }}
 }}"#
-        ),
-        move |_| {
-            assert!(!tp.is_file());
-            let mut stream = TcpStream::connect("127.0.0.1:28084")?;
-            stream.write(req.as_bytes())?;
-            stream.shutdown(Shutdown::Write)?;
-            let mut s = String::new();
-            stream.read_to_string(&mut s)?;
-            if s.starts_with("HTTP/1.1 200 OK") {
-                // We want to wait for snare to fully initialise: there is no way of doing that other than
-                // waiting and hoping.
-                sleep(SNARE_PAUSE);
+            ))
+        },
+        move |response| {
+            if response.starts_with("HTTP/1.1 200 OK") {
                 assert!(tp.is_file());
                 Ok(())
             } else {
-                Err(format!("Received HTTP response '{s}'").into())
+                Err(format!("Received HTTP response '{response}'").into())
             }
         },
-        exit_success,
     )
 }
 
@@ -188,8 +192,23 @@ fn bad_sha256() -> Result<(), Box<dyn Error>> {
     let mut tp = td.path().to_owned();
     tp.push("t");
     let tps = tp.as_path().to_str().unwrap();
-    let req = r#"POST /payload HTTP/1.1
-Host: 127.0.0.1:28084
+    assert!(!tp.is_file());
+    // Example secret and payload from
+    // https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries#testing-the-webhook-payload-validation
+    run(
+        &format!(
+            r#"listen = "127.0.0.1:0";
+github {{
+  match ".*" {{
+    cmd = "touch {tps}";
+    secret = "secretsecret";
+  }}
+}}"#
+        ),
+        move |port| {
+            Ok(format!(
+                r#"POST /payload HTTP/1.1
+Host: 127.0.0.1:{port}
 Content-Length: 104
 X-GitHub-Delivery: 72d3162e-cc78-11e3-81ab-4c9367dc0958
 X-Hub-Signature-256: sha256=292e1ce3568fecd98589c71938e19afee9b04b7fe11886d5478d802416bbde67
@@ -200,43 +219,24 @@ X-GitHub-Hook-ID: 292430182
 X-GitHub-Hook-Installation-Target-ID: 79929171
 X-GitHub-Hook-Installation-Target-Type: repository
 
-payload={
-  "repository": {
-    "owner": {
+payload={{
+  "repository": {{
+    "owner": {{
       "login": "testuser"
-    },
+    }},
     "name": "testrepo"
-  }
-}"#;
-
-    run(
-        &format!(
-            r#"listen = "127.0.0.1:28085";
-github {{
-  match ".*" {{
-    cmd = "touch {tps}";
-    secret = "secretsecret";
   }}
 }}"#
-        ),
-        move |_| {
-            assert!(!tp.is_file());
-            let mut stream = TcpStream::connect("127.0.0.1:28085")?;
-            stream.write(req.as_bytes())?;
-            stream.shutdown(Shutdown::Write)?;
-            let mut s = String::new();
-            stream.read_to_string(&mut s)?;
-            if s.starts_with("HTTP/1.1 400") {
-                // We want to wait for snare to fully initialise: there is no way of doing that other than
-                // waiting and hoping.
-                sleep(SNARE_PAUSE);
+            ))
+        },
+        move |response| {
+            if response.starts_with("HTTP/1.1 400") {
                 assert!(!tp.is_file());
                 Ok(())
             } else {
-                Err(format!("Received HTTP response '{s}'").into())
+                Err(format!("Received HTTP response '{response}'").into())
             }
         },
-        exit_success,
     )
 }
 
@@ -249,10 +249,23 @@ fn wrong_secret() -> Result<(), Box<dyn Error>> {
     let mut tp = td.path().to_owned();
     tp.push("t");
     let tps = tp.as_path().to_str().unwrap();
+    assert!(!tp.is_file());
     // Example secret and payload from
     // https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries#testing-the-webhook-payload-validation
-    let req = r#"POST /payload HTTP/1.1
-Host: 127.0.0.1:28084
+    run(
+        &format!(
+            r#"listen = "127.0.0.1:0";
+github {{
+  match ".*" {{
+    cmd = "touch {tps}";
+    secret = "secretsecretsecret";
+  }}
+}}"#
+        ),
+        move |port| {
+            Ok(format!(
+                r#"POST /payload HTTP/1.1
+Host: 127.0.0.1:{port}
 Content-Length: 104
 X-GitHub-Delivery: 72d3162e-cc78-11e3-81ab-4c9367dc0958
 X-Hub-Signature-256: sha256=292e1ce3568fecd98589c71938e19afee9b04b7fe11886d5478d802416bbde66
@@ -263,42 +276,23 @@ X-GitHub-Hook-ID: 292430182
 X-GitHub-Hook-Installation-Target-ID: 79929171
 X-GitHub-Hook-Installation-Target-Type: repository
 
-payload={
-  "repository": {
-    "owner": {
+payload={{
+  "repository": {{
+    "owner": {{
       "login": "testuser"
-    },
+    }},
     "name": "testrepo"
-  }
-}"#;
-
-    run(
-        &format!(
-            r#"listen = "127.0.0.1:28086";
-github {{
-  match ".*" {{
-    cmd = "touch {tps}";
-    secret = "secretsecretsecret";
   }}
 }}"#
-        ),
-        move |_| {
-            assert!(!tp.is_file());
-            let mut stream = TcpStream::connect("127.0.0.1:28086")?;
-            stream.write(req.as_bytes())?;
-            stream.shutdown(Shutdown::Write)?;
-            let mut s = String::new();
-            stream.read_to_string(&mut s)?;
-            if s.starts_with("HTTP/1.1 400") {
-                // We want to wait for snare to fully initialise: there is no way of doing that other than
-                // waiting and hoping.
-                sleep(SNARE_PAUSE);
+            ))
+        },
+        move |response| {
+            if response.starts_with("HTTP/1.1 400") {
                 assert!(!tp.is_file());
                 Ok(())
             } else {
-                Err(format!("Received HTTP response '{s}'").into())
+                Err(format!("Received HTTP response '{response}'").into())
             }
         },
-        exit_success,
     )
 }
