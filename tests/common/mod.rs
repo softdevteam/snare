@@ -25,7 +25,7 @@ use wait_timeout::ChildExt;
 /// always have a box which (perhaps because it's loaded) causes arbitrarily long pauses. So we set
 /// a fairly high threshold, hoping that will deal with most reasonable cases, and then cross our
 /// fingers!
-static SNARE_PAUSE: Duration = Duration::from_secs(1);
+pub static SNARE_PAUSE: Duration = Duration::from_secs(1);
 /// When we send SIGTERM to a snare instance, what is the maximum time we should wait for the
 /// process to exit? We don't expect this maximum time to be reached often, so a fairly high
 /// threshold is tolerable, and doing so maximises the chance that we get something useful printed
@@ -38,6 +38,10 @@ where
     G: Fn(String) -> Result<(), Box<dyn Error>> + RefUnwindSafe + UnwindSafe + 'static,
 {
     let (mut sn, tp) = snare_command(cfg)?;
+    match sn.try_wait() {
+        Ok(None) => (),
+        _ => todo!(),
+    }
     let tp = Rc::new(tp);
 
     for (req, check) in req_check {
@@ -52,9 +56,6 @@ where
             let mut response = String::new();
             stream.read_to_string(&mut response).unwrap();
 
-            // We want to wait for snare to execute any actions that might come with the request. Again, we
-            // have no way of doing that other than waiting and hoping.
-            sleep(SNARE_PAUSE);
             check(response).unwrap();
         });
 
