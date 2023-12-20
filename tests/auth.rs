@@ -5,17 +5,6 @@ mod common;
 use common::run;
 
 #[test]
-fn minimal_config() -> Result<(), Box<dyn Error>> {
-    run(
-        r#"listen = "127.0.0.1:0";
-github {
-}"#,
-        |_| Ok(String::new()),
-        |_| Ok(()),
-    )
-}
-
-#[test]
 fn full_request() -> Result<(), Box<dyn Error>> {
     // This test checks that snare both responds to, and executes the correct command for, a given
     // (user, repo) pair. It does that by checking that snare executes `touch <tempfile>`.
