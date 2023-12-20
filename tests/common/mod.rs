@@ -36,36 +36,6 @@ where
     F: FnOnce(u16) -> Result<String, Box<dyn Error>> + UnwindSafe + 'static,
     G: FnOnce(String) -> Result<(), Box<dyn Error>> + UnwindSafe + 'static,
 {
-    run(cfg, req, check_response)
-}
-
-fn snare_command(cfg: &str) -> Result<(Child, NamedTempFile), Box<dyn Error>> {
-    let mut tc = Builder::new().tempfile_in(env!("CARGO_TARGET_TMPDIR"))?;
-    write!(tc, "{cfg}")?;
-    let mut cmd = escargot::CargoBuild::new()
-        .bin("snare")
-        .current_release()
-        .current_target()
-        .no_default_features()
-        .features("_internal_testing")
-        .run()?
-        .command();
-    let tp = Builder::new().tempfile_in(env!("CARGO_TARGET_TMPDIR"))?;
-    cmd.env("SNARE_DEBUG_PORT_PATH", tp.path().to_str().unwrap());
-    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-    cmd.args(["-d", "-c", tc.path().to_str().unwrap()]);
-    let sn = cmd.spawn()?;
-    // We want to wait for snare to fully initialise: there is no way of doing that other than
-    // waiting and hoping.
-    sleep(SNARE_PAUSE);
-    Ok((sn, tp))
-}
-
-fn run<F, G>(cfg: &str, req: F, check_response: G) -> Result<(), Box<dyn Error>>
-where
-    F: FnOnce(u16) -> Result<String, Box<dyn Error>> + UnwindSafe + 'static,
-    G: FnOnce(String) -> Result<(), Box<dyn Error>> + UnwindSafe + 'static,
-{
     let (mut sn, tp) = snare_command(cfg)?;
 
     // Try as hard as possible not to leave snare processes lurking around after the tests are run,
@@ -125,4 +95,42 @@ where
         }
         Ok(None) => Err("timeout waiting for snare to exit".into()),
     }
+}
+
+#[allow(dead_code)]
+pub fn run_preserver_error(cfg: &str) -> Result<(), Box<dyn Error>> {
+    let (mut sn, _tp) = snare_command(cfg)?;
+    match sn.wait_timeout(SNARE_WAIT_TIMEOUT) {
+        Err(e) => Err(e.into()),
+        Ok(Some(es)) => {
+            if !es.success() {
+                Ok(())
+            } else {
+                Err("snare exited successfully".into())
+            }
+        }
+        Ok(None) => Err("timeout waiting for snare to exit".into()),
+    }
+}
+
+fn snare_command(cfg: &str) -> Result<(Child, NamedTempFile), Box<dyn Error>> {
+    let mut tc = Builder::new().tempfile_in(env!("CARGO_TARGET_TMPDIR"))?;
+    write!(tc, "{cfg}")?;
+    let mut cmd = escargot::CargoBuild::new()
+        .bin("snare")
+        .current_release()
+        .current_target()
+        .no_default_features()
+        .features("_internal_testing")
+        .run()?
+        .command();
+    let tp = Builder::new().tempfile_in(env!("CARGO_TARGET_TMPDIR"))?;
+    cmd.env("SNARE_DEBUG_PORT_PATH", tp.path().to_str().unwrap());
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    cmd.args(["-d", "-c", tc.path().to_str().unwrap()]);
+    let sn = cmd.spawn()?;
+    // We want to wait for snare to fully initialise: there is no way of doing that other than
+    // waiting and hoping.
+    sleep(SNARE_PAUSE);
+    Ok((sn, tp))
 }
