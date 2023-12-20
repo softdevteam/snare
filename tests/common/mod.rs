@@ -10,11 +10,11 @@ use std::{
     net::{Shutdown, TcpStream},
     os::unix::process::ExitStatusExt,
     panic::{catch_unwind, resume_unwind, UnwindSafe},
-    process::Stdio,
+    process::{Child, Stdio},
     thread::sleep,
     time::Duration,
 };
-use tempfile::Builder;
+use tempfile::{Builder, NamedTempFile};
 use wait_timeout::ChildExt;
 
 /// At various points we want to wait for the snare process we've started to do something (e.g.
@@ -31,11 +31,15 @@ static SNARE_PAUSE: Duration = Duration::from_secs(1);
 /// to stdout/stderr.
 static SNARE_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
 
-pub fn run<F, G>(cfg: &str, req: F, check_response: G) -> Result<(), Box<dyn Error>>
+pub fn run_success<F, G>(cfg: &str, req: F, check_response: G) -> Result<(), Box<dyn Error>>
 where
     F: FnOnce(u16) -> Result<String, Box<dyn Error>> + UnwindSafe + 'static,
     G: FnOnce(String) -> Result<(), Box<dyn Error>> + UnwindSafe + 'static,
 {
+    run(cfg, req, check_response)
+}
+
+fn snare_command(cfg: &str) -> Result<(Child, NamedTempFile), Box<dyn Error>> {
     let mut tc = Builder::new().tempfile_in(env!("CARGO_TARGET_TMPDIR"))?;
     write!(tc, "{cfg}")?;
     let mut cmd = escargot::CargoBuild::new()
@@ -50,10 +54,19 @@ where
     cmd.env("SNARE_DEBUG_PORT_PATH", tp.path().to_str().unwrap());
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     cmd.args(["-d", "-c", tc.path().to_str().unwrap()]);
-    let mut sn = cmd.spawn()?;
+    let sn = cmd.spawn()?;
     // We want to wait for snare to fully initialise: there is no way of doing that other than
     // waiting and hoping.
     sleep(SNARE_PAUSE);
+    Ok((sn, tp))
+}
+
+fn run<F, G>(cfg: &str, req: F, check_response: G) -> Result<(), Box<dyn Error>>
+where
+    F: FnOnce(u16) -> Result<String, Box<dyn Error>> + UnwindSafe + 'static,
+    G: FnOnce(String) -> Result<(), Box<dyn Error>> + UnwindSafe + 'static,
+{
+    let (mut sn, tp) = snare_command(cfg)?;
 
     // Try as hard as possible not to leave snare processes lurking around after the tests are run,
     // by sending them SIGTERM in as many cases as we reasonably can. Note that `catch_unwind` does

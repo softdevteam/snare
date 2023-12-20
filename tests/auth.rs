@@ -2,7 +2,7 @@ use std::error::Error;
 use tempfile::Builder;
 
 mod common;
-use common::run;
+use common::run_success;
 
 #[test]
 fn full_request() -> Result<(), Box<dyn Error>> {
@@ -16,7 +16,7 @@ fn full_request() -> Result<(), Box<dyn Error>> {
     assert!(!tp.is_file());
     // Example secret and payload from
     // https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries#testing-the-webhook-payload-validation
-    run(
+    run_success(
         &format!(
             r#"listen = "127.0.0.1:0";
 github {{
@@ -74,7 +74,7 @@ fn bad_sha256() -> Result<(), Box<dyn Error>> {
     assert!(!tp.is_file());
     // Example secret and payload from
     // https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries#testing-the-webhook-payload-validation
-    run(
+    run_success(
         &format!(
             r#"listen = "127.0.0.1:0";
 github {{
@@ -131,7 +131,7 @@ fn wrong_secret() -> Result<(), Box<dyn Error>> {
     assert!(!tp.is_file());
     // Example secret and payload from
     // https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries#testing-the-webhook-payload-validation
-    run(
+    run_success(
         &format!(
             r#"listen = "127.0.0.1:0";
 github {{
