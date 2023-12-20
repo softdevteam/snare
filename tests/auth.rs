@@ -73,15 +73,17 @@ fn successful_auth() -> Result<(), Box<dyn Error>> {
     // https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries#testing-the-webhook-payload-validation
     run_success(
         &cfg,
-        move |port| Ok(req(port, true)),
-        move |response| {
-            if response.starts_with("HTTP/1.1 200 OK") {
-                assert!(tp.is_file());
-                Ok(())
-            } else {
-                Err(format!("Received HTTP response '{response}'").into())
-            }
-        },
+        &[(
+            move |port| Ok(req(port, true)),
+            move |response| {
+                if response.starts_with("HTTP/1.1 200 OK") {
+                    assert!(tp.is_file());
+                    Ok(())
+                } else {
+                    Err(format!("Received HTTP response '{response}'").into())
+                }
+            },
+        )],
     )
 }
 
@@ -97,15 +99,17 @@ fn bad_sha256() -> Result<(), Box<dyn Error>> {
     // https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries#testing-the-webhook-payload-validation
     run_success(
         &cfg,
-        move |port| Ok(req(port, false)),
-        move |response| {
-            if response.starts_with("HTTP/1.1 400") {
-                assert!(!tp.is_file());
-                Ok(())
-            } else {
-                Err(format!("Received HTTP response '{response}'").into())
-            }
-        },
+        &[(
+            move |port| Ok(req(port, false)),
+            move |response| {
+                if response.starts_with("HTTP/1.1 400") {
+                    assert!(!tp.is_file());
+                    Ok(())
+                } else {
+                    Err(format!("Received HTTP response '{response}'").into())
+                }
+            },
+        )],
     )
 }
 
@@ -120,14 +124,16 @@ fn wrong_secret() -> Result<(), Box<dyn Error>> {
     // https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries#testing-the-webhook-payload-validation
     run_success(
         &cfg,
-        move |port| Ok(req(port, true)),
-        move |response| {
-            if response.starts_with("HTTP/1.1 400") {
-                assert!(!tp.is_file());
-                Ok(())
-            } else {
-                Err(format!("Received HTTP response '{response}'").into())
-            }
-        },
+        &[(
+            move |port| Ok(req(port, true)),
+            move |response| {
+                if response.starts_with("HTTP/1.1 400") {
+                    assert!(!tp.is_file());
+                    Ok(())
+                } else {
+                    Err(format!("Received HTTP response '{response}'").into())
+                }
+            },
+        )],
     )
 }

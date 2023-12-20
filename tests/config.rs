@@ -14,8 +14,7 @@ fn minimal_config() -> Result<(), Box<dyn Error>> {
         r#"listen = "127.0.0.1:0";
 github {
 }"#,
-        |_| Ok(String::new()),
-        |_| Ok(()),
+        &[(|_| Ok(String::new()), |_| Ok(()))],
     )
 }
 
