@@ -5,7 +5,7 @@ mod common;
 use common::run_success;
 
 #[test]
-fn full_request() -> Result<(), Box<dyn Error>> {
+fn successful_auth() -> Result<(), Box<dyn Error>> {
     // This test checks that snare both responds to, and executes the correct command for, a given
     // (user, repo) pair. It does that by checking that snare executes `touch <tempfile>`.
 
