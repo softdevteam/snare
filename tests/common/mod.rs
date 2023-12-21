@@ -32,6 +32,7 @@ pub static SNARE_PAUSE: Duration = Duration::from_secs(1);
 /// to stdout/stderr.
 static SNARE_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
 
+#[allow(dead_code)]
 pub fn run_success<F, G>(cfg: &str, req_check: &[(F, G)]) -> Result<(), Box<dyn Error>>
 where
     F: Fn(u16) -> Result<String, Box<dyn Error>> + RefUnwindSafe + UnwindSafe + 'static,
@@ -101,8 +102,27 @@ where
 }
 
 #[allow(dead_code)]
+pub fn run_preserver_success(cfg: &str) -> Result<(), Box<dyn Error>> {
+    let (mut sn, _tp) = snare_command(cfg)?;
+    sleep(SNARE_PAUSE);
+    kill(Pid::from_raw(sn.id().try_into().unwrap()), Signal::SIGTERM).unwrap();
+    match sn.wait_timeout(SNARE_WAIT_TIMEOUT) {
+        Err(e) => Err(e.into()),
+        Ok(Some(es)) => {
+            if let Some(Signal::SIGTERM) = es.signal().map(|x| Signal::try_from(x).unwrap()) {
+                Ok(())
+            } else {
+                Err(format!("Expected successful exit but got '{es:?}'").into())
+            }
+        }
+        Ok(None) => Err("timeout waiting for snare to exit".into()),
+    }
+}
+
+#[allow(dead_code)]
 pub fn run_preserver_error(cfg: &str) -> Result<(), Box<dyn Error>> {
     let (mut sn, _tp) = snare_command(cfg)?;
+    sleep(SNARE_PAUSE);
     match sn.wait_timeout(SNARE_WAIT_TIMEOUT) {
         Err(e) => Err(e.into()),
         Ok(Some(es)) => {
