@@ -8,6 +8,7 @@
 .Nm snare
 .Op Fl c Ar config-file
 .Op Fl d
+.Op Fl v
 .Sh DESCRIPTION
 .Nm
 is a GitHub webhooks daemon.
@@ -39,6 +40,11 @@ tells
 not to daemonise: in other words, `snare` stays in the foreground and logs
 errors to stderr.
 This can be useful for debugging.
+.It Fl v
+enables more verbose logging.
+.Fl v
+can be used up to 4 times, with each repetition increasing the quantity
+of logging.
 .El
 .Sh INTEGRATION WITH GITHUB
 .Nm

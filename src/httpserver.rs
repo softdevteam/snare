@@ -12,6 +12,7 @@ use std::{
 };
 
 use hmac::{Hmac, Mac};
+use log::info;
 use percent_encoding::percent_decode;
 use secstr::SecStr;
 use sha2::Sha256;
@@ -61,7 +62,7 @@ pub(crate) fn serve(snare: Arc<Snare>) -> Result<(), Box<dyn Error>> {
                     http_200(&mut stream);
                 }
                 Err(e) => {
-                    snare.error_err("Processing HTTP request", e);
+                    info!("Couldn't process HTTP request: {e}");
                     http_400(&mut stream)
                 }
             }
