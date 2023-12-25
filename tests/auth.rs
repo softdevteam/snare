@@ -1,8 +1,8 @@
-use std::{error::Error, path::PathBuf};
+use std::{error::Error, path::PathBuf, thread::sleep};
 use tempfile::{Builder, TempDir};
 
 mod common;
-use common::run_success;
+use common::{run_success, SNARE_PAUSE};
 
 fn cfg(correct_secret: bool) -> Result<(String, TempDir, PathBuf), Box<dyn Error>> {
     let secret = if correct_secret {
@@ -73,15 +73,18 @@ fn successful_auth() -> Result<(), Box<dyn Error>> {
     // https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries#testing-the-webhook-payload-validation
     run_success(
         &cfg,
-        move |port| Ok(req(port, true)),
-        move |response| {
-            if response.starts_with("HTTP/1.1 200 OK") {
-                assert!(tp.is_file());
-                Ok(())
-            } else {
-                Err(format!("Received HTTP response '{response}'").into())
-            }
-        },
+        &[(
+            move |port| Ok(req(port, true)),
+            move |response| {
+                if response.starts_with("HTTP/1.1 200 OK") {
+                    sleep(SNARE_PAUSE);
+                    assert!(tp.is_file());
+                    Ok(())
+                } else {
+                    Err(format!("Received HTTP response '{response}'").into())
+                }
+            },
+        )],
     )
 }
 
@@ -97,15 +100,18 @@ fn bad_sha256() -> Result<(), Box<dyn Error>> {
     // https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries#testing-the-webhook-payload-validation
     run_success(
         &cfg,
-        move |port| Ok(req(port, false)),
-        move |response| {
-            if response.starts_with("HTTP/1.1 400") {
-                assert!(!tp.is_file());
-                Ok(())
-            } else {
-                Err(format!("Received HTTP response '{response}'").into())
-            }
-        },
+        &[(
+            move |port| Ok(req(port, false)),
+            move |response| {
+                if response.starts_with("HTTP/1.1 400") {
+                    sleep(SNARE_PAUSE);
+                    assert!(!tp.is_file());
+                    Ok(())
+                } else {
+                    Err(format!("Received HTTP response '{response}'").into())
+                }
+            },
+        )],
     )
 }
 
@@ -120,14 +126,17 @@ fn wrong_secret() -> Result<(), Box<dyn Error>> {
     // https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries#testing-the-webhook-payload-validation
     run_success(
         &cfg,
-        move |port| Ok(req(port, true)),
-        move |response| {
-            if response.starts_with("HTTP/1.1 400") {
-                assert!(!tp.is_file());
-                Ok(())
-            } else {
-                Err(format!("Received HTTP response '{response}'").into())
-            }
-        },
+        &[(
+            move |port| Ok(req(port, true)),
+            move |response| {
+                if response.starts_with("HTTP/1.1 400") {
+                    sleep(SNARE_PAUSE);
+                    assert!(!tp.is_file());
+                    Ok(())
+                } else {
+                    Err(format!("Received HTTP response '{response}'").into())
+                }
+            },
+        )],
     )
 }
