@@ -22,6 +22,7 @@ use std::{
 };
 
 use libc::c_int;
+use log::error;
 use nix::{
     fcntl::{fcntl, FcntlArg, OFlag},
     poll::{poll, PollFd, PollFlags},
@@ -216,10 +217,10 @@ impl JobRunner {
                         if !exited_success {
                             let job = &self.running[i].as_ref().unwrap();
                             if job.is_errorcmd {
-                                self.snare.error(&format!(
+                                error!(
                                     "errorcmd exited unsuccessfully: {}",
                                     job.rconf.errorcmd.as_ref().unwrap()
-                                ));
+                                );
                             } else if let Some(errorchild) = self.run_errorcmd(job) {
                                 let job = &mut self.running[i].as_mut().unwrap();
                                 job.child = errorchild;
@@ -335,19 +336,19 @@ impl JobRunner {
             Ok(tfile) => match tfile.into_temp_path().keep() {
                 Ok(p) => {
                     if let Err(e) = fs::write(&p, qj.json_str.as_bytes()) {
-                        self.snare.error_err("Couldn't write JSON file.", e);
+                        error!("Couldn't write JSON file: {e}");
                         remove_file(p).ok();
                         return Err(Some(qj));
                     }
                     p
                 }
                 Err(e) => {
-                    self.snare.error_err("Couldn't create temporary file.", e);
+                    error!("Couldn't create temporary file: {e}");
                     return Err(Some(qj));
                 }
             },
             Err(e) => {
-                self.snare.error_err("Couldn't create temporary file.", e);
+                error!("Couldn't create temporary file: {e}");
                 return Err(Some(qj));
             }
         };
@@ -376,7 +377,7 @@ impl JobRunner {
                         {
                             Ok(c) => c,
                             Err(e) => {
-                                self.snare.error_err("Can't spawn command: {:?}", e);
+                                error!("Can't spawn command: {e}");
                                 return Err(None);
                             }
                         };
@@ -391,8 +392,7 @@ impl JobRunner {
                         if let Err(e) =
                             set_nonblock(stderr_fd).and_then(|_| set_nonblock(stdout_fd))
                         {
-                            self.snare
-                                .error_err("Can't set file descriptors to non-blocking: {:?}", e);
+                            error!("Can't set file descriptors to non-blocking: {e}");
                             return Err(None);
                         }
 
@@ -507,9 +507,7 @@ impl JobRunner {
                 .spawn()
             {
                 Ok(c) => return Some(c),
-                Err(e) => self
-                    .snare
-                    .error_err(&format!("Can't spawn '{}'", errorcmd), e),
+                Err(e) => error!("Can't spawn '{errorcmd}': {e}"),
             }
         }
         None

@@ -12,6 +12,7 @@ use std::{
 };
 
 use hmac::{Hmac, Mac};
+use log::{error, trace};
 use percent_encoding::percent_decode;
 use secstr::SecStr;
 use sha2::Sha256;
@@ -37,7 +38,7 @@ pub(crate) fn serve(snare: Arc<Snare>) -> Result<(), Box<dyn Error>> {
     }
 
     let active = Arc::new(AtomicUsize::new(0));
-    for mut stream in listener.incoming().flatten() {
+    for stream in listener.incoming().flatten() {
         // We want to keep a limit on how many threads are started concurrently, so that an
         // attacker can't DOS the machine. `active` keeps track of how many threads are (or are
         // just about to be) active. Since the common case is that we haven't hit the limit, we
@@ -56,61 +57,108 @@ pub(crate) fn serve(snare: Arc<Snare>) -> Result<(), Box<dyn Error>> {
         let active = Arc::clone(&active);
         let snare = Arc::clone(&snare);
         thread::spawn(move || {
-            match request(&snare, &mut stream) {
-                Ok(()) => {
-                    http_200(&mut stream);
-                }
-                Err(e) => {
-                    snare.error_err("Processing HTTP request", e);
-                    http_400(&mut stream)
-                }
-            }
+            request(&snare, stream);
             active.fetch_sub(1, Ordering::Relaxed);
         });
     }
     Ok(())
 }
 
-fn request(snare: &Arc<Snare>, stream: &mut TcpStream) -> Result<(), Box<dyn Error>> {
-    stream.set_read_timeout(Some(NET_TIMEOUT))?;
-    stream.set_write_timeout(Some(NET_TIMEOUT))?;
+/// Try processing an HTTP request.
+fn request(snare: &Arc<Snare>, mut stream: TcpStream) {
+    match (
+        stream.set_read_timeout(Some(NET_TIMEOUT)),
+        stream.set_write_timeout(Some(NET_TIMEOUT)),
+    ) {
+        (Ok(_), Ok(_)) => (),
+        _ => {
+            error!("Couldn't set timeout on sockets");
+            http_500(stream);
+            return;
+        }
+    }
     let req_time = Instant::now();
-    let (headers, body) = parse_get(stream)?;
-    stream.shutdown(Shutdown::Read)?;
+    let (headers, body) = match parse_get(&mut stream) {
+        Ok(x) => x,
+        Err(e) => {
+            trace!("Processing HTTP request: {e}");
+            http_400(stream);
+            return;
+        }
+    };
+    if stream.shutdown(Shutdown::Read).is_err() {
+        http_400(stream);
+        return;
+    }
 
-    let event_type = headers
-        .get("x-github-event")
-        .ok_or_else(|| "X-Github-Event header missing".to_owned())?;
+    let event_type = match headers.get("x-github-event") {
+        Some(x) => x,
+        None => {
+            trace!("HTTP request: X-Github-Event header missing");
+            http_400(stream);
+            return;
+        }
+    };
     if !valid_github_event(event_type) {
-        return Err("Invalid event type".into());
+        error!("Invalid GitHub event type '{event_type}'");
+        http_400(stream);
+        return;
     }
     let sig = match headers
         .get("x-hub-signature-256")
         .and_then(|s| s.split_once('='))
     {
         Some(("sha256", sig)) => Some(sig),
-        Some(_) => return Err("Incorrectly formatted X-Hub-Signature-256 header".into()),
+        Some(_) => {
+            trace!("Incorrectly formatted X-Hub-Signature-256 header");
+            http_400(stream);
+            return;
+        }
         None => None,
     };
 
     if !body.starts_with("payload=".as_bytes()) {
-        return Err("Payload does not start with 'payload='".into());
+        trace!("Payload does not start with 'payload='");
+        http_400(stream);
+        return;
     }
-    let json_str = percent_decode(&body[8..]).decode_utf8()?.to_string();
-    let jv = serde_json::from_str::<serde_json::Value>(&json_str)?;
+    let json_str = match percent_decode(&body[8..]).decode_utf8() {
+        Ok(x) => x.to_string(),
+        Err(_) => {
+            trace!("JSON not valid UTF-8");
+            http_400(stream);
+            return;
+        }
+    };
+    let jv = match serde_json::from_str::<serde_json::Value>(&json_str) {
+        Ok(x) => x,
+        Err(e) => {
+            trace!("Can't parse JSON: {e}");
+            http_400(stream);
+            return;
+        }
+    };
     let (owner, repo) = match (
         &jv["repository"]["owner"]["login"].as_str(),
         &jv["repository"]["name"].as_str(),
     ) {
         (Some(o), Some(r)) => (o.to_owned(), r.to_owned()),
-        _ => return Err("Invalid JSON".into()),
+        _ => {
+            trace!("Invalid JSON");
+            http_400(stream);
+            return;
+        }
     };
 
     if !valid_github_ownername(owner) {
-        return Err(format!("Invalid GitHub owner '{}'.", &owner).into());
+        trace!("Invalid GitHub owner syntax '{owner}'.");
+        http_400(stream);
+        return;
     }
     if !valid_github_reponame(repo) {
-        return Err(format!("Invalid GitHub repository '{}'.", &repo).into());
+        trace!("Invalid GitHub repository syntax '{repo}'.");
+        http_400(stream);
+        return;
     }
 
     let conf = snare.conf.lock().unwrap();
@@ -119,25 +167,27 @@ fn request(snare: &Arc<Snare>, stream: &mut TcpStream) -> Result<(), Box<dyn Err
     match (secret, sig) {
         (Some(secret), Some(sig)) => {
             if !authenticate(secret, sig, &body) {
-                return Err(format!("Authentication failed for {}/{}.", owner, repo).into());
+                error!("Authentication failed for {owner}/{repo}.");
+                http_401(stream);
+                return;
             }
         }
         (Some(_), None) => {
-            return Err("Secret specified but request unsigned".into());
+            error!("Secret specified but request unsigned");
+            http_401(stream);
+            return;
         }
         (None, Some(_)) => {
-            return Err(format!(
-                "Request was signed but no secret was specified for {}/{}.",
-                owner, repo
-            )
-            .into());
+            error!("Request was signed but no secret was specified for {owner}/{repo}.");
+            http_401(stream);
+            return;
         }
         (None, None) => (),
     }
     drop(conf);
 
     if event_type == "ping" {
-        return Ok(());
+        return;
     }
 
     let repo_id = format!("github/{}/{}", owner, repo);
@@ -155,7 +205,8 @@ fn request(snare: &Arc<Snare>, stream: &mut TcpStream) -> Result<(), Box<dyn Err
     // thread will be notified anyway. If something else happens to have gone wrong, then
     // we (and the OS) are probably in deep trouble anyway...
     nix::unistd::write(snare.event_write_fd, &[0]).ok();
-    Ok(())
+
+    http_200(stream);
 }
 
 /// A very literal, and rather unforgiving, implementation of RFC2616 (HTTP/1.1), returning the URL
@@ -219,12 +270,20 @@ fn parse_get(stream: &mut TcpStream) -> Result<(HashMap<String, String>, Vec<u8>
     Ok((headers_map, body))
 }
 
-fn http_200(stream: &mut TcpStream) {
+fn http_200(mut stream: TcpStream) {
     stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n").ok();
 }
 
-fn http_400(stream: &mut TcpStream) {
+fn http_400(mut stream: TcpStream) {
     stream.write_all(b"HTTP/1.1 400\r\n\r\n").ok();
+}
+
+fn http_401(mut stream: TcpStream) {
+    stream.write_all(b"HTTP/1.1 401\r\n\r\n").ok();
+}
+
+fn http_500(mut stream: TcpStream) {
+    stream.write_all(b"HTTP/1.1 500\r\n\r\n").ok();
 }
 
 /// Authenticate this request and if successful return `true` (where "success" also includes "the

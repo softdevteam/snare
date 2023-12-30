@@ -103,7 +103,7 @@ fn bad_sha256() -> Result<(), Box<dyn Error>> {
         &[(
             move |port| Ok(req(port, false)),
             move |response| {
-                if response.starts_with("HTTP/1.1 400") {
+                if response.starts_with("HTTP/1.1 401") {
                     sleep(SNARE_PAUSE);
                     assert!(!tp.is_file());
                     Ok(())
@@ -129,7 +129,7 @@ fn wrong_secret() -> Result<(), Box<dyn Error>> {
         &[(
             move |port| Ok(req(port, true)),
             move |response| {
-                if response.starts_with("HTTP/1.1 400") {
+                if response.starts_with("HTTP/1.1 401") {
                     sleep(SNARE_PAUSE);
                     assert!(!tp.is_file());
                     Ok(())
