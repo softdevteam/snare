@@ -1,19 +1,29 @@
 PREFIX ?= /usr/local
-MAN_PREFIX ?= ${PREFIX}/man
+BINDIR ?= ${PREFIX}/bin
+LIBDIR ?= ${PREFIX}/lib
+SHAREDIR ?= ${PREFIX}/share
+EXAMPLESDIR ?= ${SHAREDIR}/examples
+
+MANDIR.${PREFIX} = ${PREFIX}/share/man
+MANDIR./usr/local = /usr/local/man
+MANDIR. = /usr/share/man
+MANDIR ?= ${MANDIR.${PREFIX}}
+
+.PHONY: all install distrib
 
 all:
 	cargo build --release
 
 install:
 	cargo build --release
-	install -d ${PREFIX}/bin
-	install -c -m 555 target/release/snare ${PREFIX}/bin/snare
-	install -d ${MAN_PREFIX}/man/man1
-	install -d ${MAN_PREFIX}/man/man5
-	install -c -m 444 snare.1 ${MAN_PREFIX}/man/man1/snare.1
-	install -c -m 444 snare.conf.5 ${MAN_PREFIX}/man/man5/snare.conf.5
-	install -d ${PREFIX}/share/examples/snare
-	install -c -m 444 snare.conf.example ${PREFIX}/share/examples/snare
+	install -d ${DESTDIR}${BINDIR}
+	install -c -m 555 target/release/snare ${DESTDIR}${BINDIR}/snare
+	install -d ${DESTDIR}${MANDIR}/man1
+	install -d ${DESTDIR}${MANDIR}/man5
+	install -c -m 444 snare.1 ${DESTDIR}${MANDIR}/man1/snare.1
+	install -c -m 444 snare.conf.5 ${DESTDIR}${MANDIR}/man5/snare.conf.5
+	install -d ${DESTDIR}${EXAMPLESDIR}/pizauth
+	install -c -m 444 snare.conf.example ${DESTDIR}${EXAMPLESDIR}/snare
 
 distrib:
 	test "X`git status --porcelain`" = "X"
