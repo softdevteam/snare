@@ -1,3 +1,20 @@
+# snare 0.4.9 (2024-01-08)
+
+* Remove hyper/tokio in favour of a simple internal HTTP server. This
+  reduces the number of library dependencies by about 25%.
+
+* Improve logging: errors, warnings, and information are now differentiated.
+  The `-v` switch increases the logging level. Defaults to "only report
+  errors".
+
+* Default to `/bin/sh` if `$SHELL` isn't set when running commands.
+
+* Add a system test suite.
+
+* Respect `DESTDIR`, and try to pick a more appropriate location for man pages,
+  in installation.
+
+
 # snare 0.4.8 (2023-03-08)
 
 * Update dependencies.
