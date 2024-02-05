@@ -185,11 +185,12 @@ fn request(snare: &Arc<Snare>, mut stream: TcpStream) {
     }
     drop(conf);
 
+    let repo_id = format!("github/{}/{}", owner, repo);
+    snare.info(&format!("Received {event_type} for {repo_id}"));
     if event_type == "ping" {
         return;
     }
 
-    let repo_id = format!("github/{}/{}", owner, repo);
     let qj = QueueJob::new(
         repo_id,
         owner.to_owned(),

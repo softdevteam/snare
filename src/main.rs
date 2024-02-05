@@ -27,7 +27,9 @@ use std::{
 };
 
 use getopts::Options;
-use libc::{c_char, openlog, syslog, LOG_CONS, LOG_CRIT, LOG_DAEMON, LOG_ERR, LOG_WARNING};
+use libc::{
+    c_char, openlog, syslog, LOG_CONS, LOG_CRIT, LOG_DAEMON, LOG_ERR, LOG_INFO, LOG_WARNING,
+};
 use nix::{
     fcntl::OFlag,
     unistd::{daemon, pipe2, setresgid, setresuid, Gid, Uid},
@@ -45,6 +47,7 @@ const SNARE_CONF_PATH: &str = "/etc/snare/snare.conf";
 pub enum LogLevel {
     Error,
     Warn,
+    Info,
 }
 
 pub(crate) struct Snare {
@@ -100,6 +103,7 @@ impl Snare {
             let syslog_level = match self.log_level {
                 LogLevel::Error => LOG_ERR,
                 LogLevel::Warn => LOG_WARNING,
+                LogLevel::Info => LOG_INFO,
             };
             unsafe {
                 syslog(syslog_level, fmt.as_ptr(), msg.as_ptr());
@@ -125,6 +129,15 @@ impl Snare {
     /// If `msg` contains a `NUL` byte.
     pub fn warn(&self, msg: &str) {
         self.log(msg, LogLevel::Warn);
+    }
+
+    /// Log `msg` as an informational message.
+    ///
+    /// # Panics
+    ///
+    /// If `msg` contains a `NUL` byte.
+    pub fn info(&self, msg: &str) {
+        self.log(msg, LogLevel::Info);
     }
 }
 
@@ -239,7 +252,8 @@ pub fn main() {
 
     let log_level = match matches.opt_count("v") {
         0 => LogLevel::Error,
-        _ => LogLevel::Warn,
+        1 => LogLevel::Warn,
+        _ => LogLevel::Info,
     };
 
     change_user(&conf);
