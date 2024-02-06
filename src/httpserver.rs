@@ -12,7 +12,6 @@ use std::{
 };
 
 use hmac::{Hmac, Mac};
-use log::{error, trace};
 use percent_encoding::percent_decode;
 use secstr::SecStr;
 use sha2::Sha256;
@@ -72,7 +71,7 @@ fn request(snare: &Arc<Snare>, mut stream: TcpStream) {
     ) {
         (Ok(_), Ok(_)) => (),
         _ => {
-            error!("Couldn't set timeout on sockets");
+            snare.error("Couldn't set timeout on sockets");
             http_500(stream);
             return;
         }
@@ -81,7 +80,7 @@ fn request(snare: &Arc<Snare>, mut stream: TcpStream) {
     let (headers, body) = match parse_get(&mut stream) {
         Ok(x) => x,
         Err(e) => {
-            trace!("Processing HTTP request: {e}");
+            snare.warn(&format!("Processing HTTP request: {e}"));
             http_400(stream);
             return;
         }
@@ -94,13 +93,13 @@ fn request(snare: &Arc<Snare>, mut stream: TcpStream) {
     let event_type = match headers.get("x-github-event") {
         Some(x) => x,
         None => {
-            trace!("HTTP request: X-Github-Event header missing");
+            snare.warn("HTTP request: X-Github-Event header missing");
             http_400(stream);
             return;
         }
     };
     if !valid_github_event(event_type) {
-        error!("Invalid GitHub event type '{event_type}'");
+        snare.warn("Invalid GitHub event type '{event_type}'");
         http_400(stream);
         return;
     }
@@ -110,7 +109,7 @@ fn request(snare: &Arc<Snare>, mut stream: TcpStream) {
     {
         Some(("sha256", sig)) => Some(sig),
         Some(_) => {
-            trace!("Incorrectly formatted X-Hub-Signature-256 header");
+            snare.warn("Incorrectly formatted X-Hub-Signature-256 header");
             http_400(stream);
             return;
         }
@@ -118,14 +117,14 @@ fn request(snare: &Arc<Snare>, mut stream: TcpStream) {
     };
 
     if !body.starts_with("payload=".as_bytes()) {
-        trace!("Payload does not start with 'payload='");
+        snare.warn("Payload does not start with 'payload='");
         http_400(stream);
         return;
     }
     let json_str = match percent_decode(&body[8..]).decode_utf8() {
         Ok(x) => x.to_string(),
         Err(_) => {
-            trace!("JSON not valid UTF-8");
+            snare.warn("JSON not valid UTF-8");
             http_400(stream);
             return;
         }
@@ -133,7 +132,7 @@ fn request(snare: &Arc<Snare>, mut stream: TcpStream) {
     let jv = match serde_json::from_str::<serde_json::Value>(&json_str) {
         Ok(x) => x,
         Err(e) => {
-            trace!("Can't parse JSON: {e}");
+            snare.warn(&format!("Can't parse JSON: {e}"));
             http_400(stream);
             return;
         }
@@ -144,19 +143,19 @@ fn request(snare: &Arc<Snare>, mut stream: TcpStream) {
     ) {
         (Some(o), Some(r)) => (o.to_owned(), r.to_owned()),
         _ => {
-            trace!("Invalid JSON");
+            snare.warn("Invalid JSON");
             http_400(stream);
             return;
         }
     };
 
     if !valid_github_ownername(owner) {
-        trace!("Invalid GitHub owner syntax '{owner}'.");
+        snare.warn("Invalid GitHub owner syntax '{owner}'.");
         http_400(stream);
         return;
     }
     if !valid_github_reponame(repo) {
-        trace!("Invalid GitHub repository syntax '{repo}'.");
+        snare.warn("Invalid GitHub repository syntax '{repo}'.");
         http_400(stream);
         return;
     }
@@ -167,18 +166,18 @@ fn request(snare: &Arc<Snare>, mut stream: TcpStream) {
     match (secret, sig) {
         (Some(secret), Some(sig)) => {
             if !authenticate(secret, sig, &body) {
-                error!("Authentication failed for {owner}/{repo}.");
+                snare.error("Authentication failed for {owner}/{repo}.");
                 http_401(stream);
                 return;
             }
         }
         (Some(_), None) => {
-            error!("Secret specified but request unsigned");
+            snare.error("Secret specified but request unsigned");
             http_401(stream);
             return;
         }
         (None, Some(_)) => {
-            error!("Request was signed but no secret was specified for {owner}/{repo}.");
+            snare.error("Request was signed but no secret was specified for {owner}/{repo}.");
             http_401(stream);
             return;
         }
@@ -186,11 +185,12 @@ fn request(snare: &Arc<Snare>, mut stream: TcpStream) {
     }
     drop(conf);
 
+    let repo_id = format!("github/{}/{}", owner, repo);
+    snare.info(&format!("Received {event_type} for {repo_id}"));
     if event_type == "ping" {
         return;
     }
 
-    let repo_id = format!("github/{}/{}", owner, repo);
     let qj = QueueJob::new(
         repo_id,
         owner.to_owned(),
