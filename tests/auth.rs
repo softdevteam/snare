@@ -31,7 +31,7 @@ github {{
     ))
 }
 
-fn req(port: u16, good_sha256: bool) -> String {
+fn req(port: u16, good_sha256: bool, event_type: &str) -> String {
     let sha256 = if good_sha256 {
         "292e1ce3568fecd98589c71938e19afee9b04b7fe11886d5478d802416bbde66"
     } else {
@@ -46,7 +46,7 @@ X-GitHub-Delivery: 72d3162e-cc78-11e3-81ab-4c9367dc0958
 X-Hub-Signature-256: sha256={sha256}
 User-Agent: GitHub-Hookshot/044aadd
 Content-Type: application/json
-X-GitHub-Event: issues
+X-GitHub-Event: {event_type}
 X-GitHub-Hook-ID: 292430182
 X-GitHub-Hook-Installation-Target-ID: 79929171
 X-GitHub-Hook-Installation-Target-Type: repository
@@ -63,6 +63,24 @@ payload={{
 }
 
 #[test]
+fn ping() -> Result<(), Box<dyn Error>> {
+    let (cfg, _td, _tp) = cfg(true)?;
+    run_success(
+        &cfg,
+        &[(
+            move |port| Ok(req(port, true, "ping")),
+            move |response| {
+                if response.starts_with("HTTP/1.1 200 OK") {
+                    Ok(())
+                } else {
+                    Err(format!("Received HTTP response '{response}'").into())
+                }
+            },
+        )],
+    )
+}
+
+#[test]
 fn successful_auth() -> Result<(), Box<dyn Error>> {
     // This test checks that snare both responds to, and executes the correct command for, a given
     // (user, repo) pair. It does that by checking that snare executes `touch <tempfile>`.
@@ -74,7 +92,7 @@ fn successful_auth() -> Result<(), Box<dyn Error>> {
     run_success(
         &cfg,
         &[(
-            move |port| Ok(req(port, true)),
+            move |port| Ok(req(port, true, "issues")),
             move |response| {
                 if response.starts_with("HTTP/1.1 200 OK") {
                     sleep(SNARE_PAUSE);
@@ -101,7 +119,7 @@ fn bad_sha256() -> Result<(), Box<dyn Error>> {
     run_success(
         &cfg,
         &[(
-            move |port| Ok(req(port, false)),
+            move |port| Ok(req(port, false, "issues")),
             move |response| {
                 if response.starts_with("HTTP/1.1 401") {
                     sleep(SNARE_PAUSE);
@@ -127,7 +145,7 @@ fn wrong_secret() -> Result<(), Box<dyn Error>> {
     run_success(
         &cfg,
         &[(
-            move |port| Ok(req(port, true)),
+            move |port| Ok(req(port, true, "issues")),
             move |response| {
                 if response.starts_with("HTTP/1.1 401") {
                     sleep(SNARE_PAUSE);
