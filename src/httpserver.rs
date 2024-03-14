@@ -188,6 +188,7 @@ fn request(snare: &Arc<Snare>, mut stream: TcpStream) {
     let repo_id = format!("github/{}/{}", owner, repo);
     snare.info(&format!("Received {event_type} for {repo_id}"));
     if event_type == "ping" {
+        http_200(stream);
         return;
     }
 
