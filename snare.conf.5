@@ -117,6 +117,7 @@ the repository.
 a literal
 .Ql % .
 .El
+.Pp
 Note that
 .Ql %
 may not be followed by any character other than those above.
@@ -147,10 +148,24 @@ the repository owner.
 the repository.
 .It Sy %s
 the path to the file containing the job's combined stderr / stdout.
+.It Sy %x
+the exit type:
+.Qq status
+(i.e. normal exit);
+.Qq signal ;
+or
+.Qq unknown .
+.It Sy %?
+the exit status / signal number (either an integer or the literal string
+.Qq unknown )
+that
+.Em cmd
+failed with.
 .It Sy %%
 a literal
 .Ql % .
 .El
+.Pp
 Note that
 .Ql %
 may not be followed by any character other than those above.

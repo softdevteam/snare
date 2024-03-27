@@ -39,9 +39,17 @@ where
     G: Fn(String) -> Result<(), Box<dyn Error>> + RefUnwindSafe + UnwindSafe + 'static,
 {
     let (mut sn, tp) = snare_command(cfg)?;
-    match sn.try_wait() {
-        Ok(None) => (),
-        _ => todo!(),
+    for i in 0..5 {
+        match sn.try_wait() {
+            Ok(None) => break,
+            _ => {
+                if i < 4 {
+                    sleep(Duration::from_secs(1))
+                } else {
+                    panic!()
+                }
+            }
+        }
     }
     let tp = Rc::new(tp);
 

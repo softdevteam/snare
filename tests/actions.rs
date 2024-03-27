@@ -92,9 +92,12 @@ fn errorcmd() {
     let td = Builder::new()
         .tempdir_in(env!("CARGO_TARGET_TMPDIR"))
         .unwrap();
-    let mut tp = td.path().to_owned();
-    tp.push("t");
-    let tps = tp.as_path().to_str().unwrap();
+    let mut tp1 = td.path().to_owned();
+    tp1.push("t1");
+    let tp1s = tp1.as_path().to_str().unwrap();
+    let mut tp2 = td.path().to_owned();
+    tp2.push("t2");
+    let tp2s = tp2.as_path().to_str().unwrap();
 
     run_success(
         &format!(
@@ -102,7 +105,7 @@ fn errorcmd() {
 github {{
   match ".*" {{
     cmd = "dd if=/dev/zero bs=1k count=256 status=none && dd if=/dev/zero of=/dev/stderr bs=1k count=256 status=none && exit 1";
-    errorcmd = "cp %s {tps}";
+    errorcmd = "echo %x %? > {tp1s} && cp %s {tp2s}";
     secret = "secretsecret";
   }}
 }}"#
@@ -135,7 +138,8 @@ payload={{
             move |response: String| {
                 if response.starts_with("HTTP/1.1 200 OK") {
                     sleep(SNARE_PAUSE);
-                    assert_eq!(read_to_string(&tp).unwrap().len(), 2 * 256 * 1024);
+                    assert_eq!(read_to_string(&tp1).unwrap().trim(), "status 1");
+                    assert_eq!(read_to_string(&tp2).unwrap().len(), 2 * 256 * 1024);
                     Ok(())
                 } else {
                     Err(format!("Received HTTP response '{response}'").into())
