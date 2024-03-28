@@ -13,7 +13,10 @@ use std::{
     error::Error,
     fs::{self, remove_file},
     io::{Read, Write},
-    os::unix::io::{AsRawFd, RawFd},
+    os::unix::{
+        io::{AsRawFd, RawFd},
+        process::ExitStatusExt,
+    },
     path::PathBuf,
     process::{self, Child, Command},
     sync::Arc,
@@ -201,14 +204,28 @@ impl JobRunner {
                     // `Some(_)` and the unwrap thus safe.
                     let mut exited = false;
                     let mut exited_success = false;
+                    let mut exit_type = "";
+                    let mut exit_code = String::new();
                     match self.running[i].as_mut().unwrap().child.try_wait() {
                         Ok(Some(status)) => {
                             exited = true;
                             exited_success = status.success();
+                            if let Some(x) = status.code() {
+                                exit_type = "status";
+                                exit_code = x.to_string();
+                            } else if let Some(x) = status.signal() {
+                                exit_type = "signal";
+                                exit_code = x.to_string();
+                            } else {
+                                exit_type = "unknown";
+                                exit_code = "unknown".to_owned();
+                            }
                         }
                         Err(_) => {
                             exited = true;
                             exited_success = false;
+                            exit_type = "unknown";
+                            exit_code = "unknown".to_string();
                         }
                         Ok(None) => (),
                     }
@@ -220,7 +237,9 @@ impl JobRunner {
                                     "errorcmd exited unsuccessfully: {}",
                                     job.rconf.errorcmd.as_ref().unwrap()
                                 ));
-                            } else if let Some(errorchild) = self.run_errorcmd(job) {
+                            } else if let Some(errorchild) =
+                                self.run_errorcmd(job, exit_type, &exit_code)
+                            {
                                 let job = &mut self.running[i].as_mut().unwrap();
                                 job.child = errorchild;
                                 job.is_errorcmd = true;
@@ -489,7 +508,7 @@ impl JobRunner {
     }
 
     /// Run the user's errorcmd (if they've specified one).
-    fn run_errorcmd(&self, job: &Job) -> Option<Child> {
+    fn run_errorcmd(&self, job: &Job, exit_type: &str, exit_code: &str) -> Option<Child> {
         if let Some(raw_errorcmd) = &job.rconf.errorcmd {
             let errorcmd = errorcmd_replace(
                 raw_errorcmd,
@@ -498,6 +517,8 @@ impl JobRunner {
                 &job.repo,
                 job.json_path.as_os_str().to_str().unwrap(),
                 job.stderrout.path().as_os_str().to_str().unwrap(),
+                exit_type,
+                exit_code,
             );
             match Command::new(&self.shell)
                 .arg("-c")
@@ -550,6 +571,8 @@ fn cmd_replace(
 ///   * `%r` with `repo`
 ///   * `%j` with `json_path`
 ///   * `%s` with `stderrout_path`
+///   * `%x` with `exit_type` ("status", "signal", or "unknown")
+///   * `%?` with `exit_code` (integer or "unknown")
 ///
 /// Note that `raw_cmd` *must* have been validated by config::GitHub::verify_errorcmd_str or
 /// undefined behaviour will occur.
@@ -560,6 +583,8 @@ fn errorcmd_replace(
     repo: &str,
     json_path: &str,
     stderrout_path: &str,
+    exit_type: &str,
+    exit_code: &str,
 ) -> String {
     let modifiers = [
         ('e', event_type),
@@ -567,6 +592,8 @@ fn errorcmd_replace(
         ('r', repo),
         ('j', json_path),
         ('s', stderrout_path),
+        ('x', exit_type),
+        ('?', exit_code),
         ('%', "%"),
     ]
     .iter()
@@ -656,11 +683,20 @@ mod test {
 
     #[test]
     fn test_errorcmd_replace() {
-        assert_eq!(errorcmd_replace("", "", "", "", "", ""), "");
-        assert_eq!(errorcmd_replace("a", "", "", "", "", ""), "a");
+        assert_eq!(errorcmd_replace("", "", "", "", "", "", "", ""), "");
+        assert_eq!(errorcmd_replace("a", "", "", "", "", "", "", ""), "a");
         assert_eq!(
-            errorcmd_replace("%% %e %o %r %j %s %%", "ee", "oo", "rr", "jj", "ss"),
-            "% ee oo rr jj ss %"
+            errorcmd_replace(
+                "%% %e %o %r %j %s %x %? %%",
+                "ee",
+                "oo",
+                "rr",
+                "jj",
+                "ss",
+                "ex",
+                "ec"
+            ),
+            "% ee oo rr jj ss ex ec %"
         );
     }
 }

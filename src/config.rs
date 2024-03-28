@@ -289,7 +289,7 @@ impl GitHub {
 
     /// Verify that the `errorcmd` string is valid, returning `Ok())` if so or `Err(String)` if not.
     fn verify_errorcmd_str(errorcmd: &str) -> Result<(), String> {
-        GitHub::verify_str(errorcmd, &['e', 'o', 'r', 'j', 's', '%'])
+        GitHub::verify_str(errorcmd, &['e', 'o', 'r', 'j', 's', '?', 'x', '%'])
     }
 
     fn verify_str(s: &str, modifiers: &[char]) -> Result<(), String> {
@@ -473,7 +473,7 @@ mod test {
     fn test_verify_errorcmd_string() {
         assert!(GitHub::verify_errorcmd_str("").is_ok());
         assert!(GitHub::verify_errorcmd_str("a").is_ok());
-        assert!(GitHub::verify_errorcmd_str("%% %e %o %r %j %s %%").is_ok());
+        assert!(GitHub::verify_errorcmd_str("%% %e %o %r %j %s %x %? %%").is_ok());
         assert!(GitHub::verify_errorcmd_str("%%").is_ok());
         assert!(GitHub::verify_errorcmd_str("%").is_err());
         assert!(GitHub::verify_errorcmd_str("a%").is_err());
