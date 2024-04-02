@@ -1,3 +1,16 @@
+# snare 0.4.10 (2024-04-02)
+
+* Change logging approach. `-vvvv` now gives more helpful output.
+
+* Unbreak `ping` support.
+
+* Allow `%x` and `%?` to be used in `errorcmd`. When `cmd` fails, the only clue
+  as to why can be its exit code. Previously, snare had no way of transmitting
+  this information to the user: this commit allows using `%x` and `%?` (the
+  latter borrowing the similarly named variable from the shell) in `errorcmd`
+  to access this information.
+
+
 # snare 0.4.9 (2024-01-08)
 
 * Remove hyper/tokio in favour of a simple internal HTTP server. This
