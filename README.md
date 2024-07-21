@@ -159,12 +159,14 @@ about other parts of the file system.
 
 `snare` runs an HTTP server which GitHub can send webhook requests to.
 Configuring a webhook for a given GitHub repository is relatively simple: go to
-that repository, then `Settings > Webhooks > Add webhook`. For `payload`,
-specify `http://yourmachine.com:port/`, specify a `secret` (which you will then
-reuse as the `secret` in `snare.conf`) and then choose which events you wish
-GitHub to deliver. For example, the default `Just the push event` works well
-with the email diff sending per-repo program above, but you can specify
-whichever events you wish.
+that repository, then `Settings > Webhooks > Add webhook`. 
+- For `payload`, specify `http://yourmachine.com:port/`
+- For `Content type`, select `application/x-www-form-urlencoded`
+- Specify a `secret` (which you will then reuse as the `secret` in `snare.conf`)
+
+And then choose which events you wish GitHub to deliver. For example, the default
+`Just the push event` works well with the email diff sending per-repo program above,
+but you can specify whichever events you wish.
 
 Once you have set up your webhook, GitHub will automatically send a test "ping"
 message. `snare` acknowledges pings (i.e. confirms to GitHub that it is
