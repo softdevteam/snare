@@ -49,9 +49,9 @@ github {{
                 Ok(format!(
                     r#"POST /payload HTTP/1.1
 Host: 127.0.0.1:{port}
-Content-Length: 104
+Content-Length: 96
 X-GitHub-Delivery: 72d3162e-cc78-11e3-81ab-4c9367dc0958
-X-Hub-Signature-256: sha256=292e1ce3568fecd98589c71938e19afee9b04b7fe11886d5478d802416bbde66
+X-Hub-Signature-256: sha256=d11297e14fe5286dd68fd58c5e23ea7fb45e60ceff51ec3eb3729400fcbcb4b2
 User-Agent: GitHub-Hookshot/044aadd
 Content-Type: application/json
 X-GitHub-Event: issues
@@ -59,7 +59,7 @@ X-GitHub-Hook-ID: 292430182
 X-GitHub-Hook-Installation-Target-ID: 79929171
 X-GitHub-Hook-Installation-Target-Type: repository
 
-payload={{
+{{
   "repository": {{
     "owner": {{
       "login": "testuser"
@@ -115,9 +115,9 @@ github {{
                 Ok(format!(
                     r#"POST /payload HTTP/1.1
 Host: 127.0.0.1:{port}
-Content-Length: 104
+Content-Length: 96
 X-GitHub-Delivery: 72d3162e-cc78-11e3-81ab-4c9367dc0958
-X-Hub-Signature-256: sha256=292e1ce3568fecd98589c71938e19afee9b04b7fe11886d5478d802416bbde66
+X-Hub-Signature-256: sha256=d11297e14fe5286dd68fd58c5e23ea7fb45e60ceff51ec3eb3729400fcbcb4b2
 User-Agent: GitHub-Hookshot/044aadd
 Content-Type: application/json
 X-GitHub-Event: issues
@@ -125,7 +125,7 @@ X-GitHub-Hook-ID: 292430182
 X-GitHub-Hook-Installation-Target-ID: 79929171
 X-GitHub-Hook-Installation-Target-Type: repository
 
-payload={{
+{{
   "repository": {{
     "owner": {{
       "login": "testuser"
