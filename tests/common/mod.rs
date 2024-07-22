@@ -158,7 +158,7 @@ fn snare_command(cfg: &str) -> Result<(Child, NamedTempFile), Box<dyn Error>> {
     let tp = Builder::new().tempfile_in(env!("CARGO_TARGET_TMPDIR"))?;
     cmd.env("SNARE_DEBUG_PORT_PATH", tp.path().to_str().unwrap());
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-    cmd.args(["-d", "-c", tc.path().to_str().unwrap()]);
+    cmd.args(["-d", "-v", "-c", tc.path().to_str().unwrap()]);
     let sn = cmd.spawn()?;
     // We want to wait for snare to fully initialise: there is no way of doing that other than
     // waiting and hoping.

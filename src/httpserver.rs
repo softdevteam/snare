@@ -116,19 +116,42 @@ fn request(snare: &Arc<Snare>, mut stream: TcpStream) {
         None => None,
     };
 
-    if !body.starts_with("payload=".as_bytes()) {
-        snare.warn("Payload does not start with 'payload='");
-        http_400(stream);
-        return;
-    }
-    let json_str = match percent_decode(&body[8..]).decode_utf8() {
-        Ok(x) => x.to_string(),
-        Err(_) => {
-            snare.warn("JSON not valid UTF-8");
+    let json_str = match headers.get("content-type").map(|x| x.as_str()) {
+        Some("application/json") => match std::str::from_utf8(&body) {
+            Ok(x) => x.to_owned(),
+            Err(_) => {
+                snare.warn("JSON not valid UTF-8");
+                http_400(stream);
+                return;
+            }
+        },
+        Some("application/x-www-form-urlencoded") => {
+            if !body.starts_with("payload=".as_bytes()) {
+                snare.warn("Payload does not start with 'payload='");
+                http_400(stream);
+                return;
+            }
+            match percent_decode(&body[8..]).decode_utf8() {
+                Ok(x) => x.to_string(),
+                Err(_) => {
+                    snare.warn("JSON not valid UTF-8");
+                    http_400(stream);
+                    return;
+                }
+            }
+        }
+        Some(x) => {
+            snare.warn(&format!("HTTP request: Unknown Content-Type '{x}'"));
+            http_400(stream);
+            return;
+        }
+        None => {
+            snare.warn("HTTP request: Content-Type header missing");
             http_400(stream);
             return;
         }
     };
+
     let jv = match serde_json::from_str::<serde_json::Value>(&json_str) {
         Ok(x) => x,
         Err(e) => {

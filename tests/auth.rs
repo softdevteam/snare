@@ -33,15 +33,15 @@ github {{
 
 fn req(port: u16, good_sha256: bool, event_type: &str) -> String {
     let sha256 = if good_sha256 {
-        "292e1ce3568fecd98589c71938e19afee9b04b7fe11886d5478d802416bbde66"
+        "d11297e14fe5286dd68fd58c5e23ea7fb45e60ceff51ec3eb3729400fcbcb4b2"
     } else {
-        "292e1ce3568fecd98589c71938e19afee9b04b7fe11886d5478d802416bbde67"
+        "d11297e14fe5286dd68fd58c5e23ea7fb45e60ceff51ec3eb3729400fcbcb4b3"
     };
 
     format!(
         r#"POST /payload HTTP/1.1
 Host: 127.0.0.1:{port}
-Content-Length: 104
+Content-Length: 96
 X-GitHub-Delivery: 72d3162e-cc78-11e3-81ab-4c9367dc0958
 X-Hub-Signature-256: sha256={sha256}
 User-Agent: GitHub-Hookshot/044aadd
@@ -51,7 +51,7 @@ X-GitHub-Hook-ID: 292430182
 X-GitHub-Hook-Installation-Target-ID: 79929171
 X-GitHub-Hook-Installation-Target-Type: repository
 
-payload={{
+{{
   "repository": {{
     "owner": {{
       "login": "testuser"
