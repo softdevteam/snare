@@ -1,3 +1,8 @@
+# snare 0.4.11 (2024-07-25)
+
+* Handle both JSON and urlencoded requests.
+
+
 # snare 0.4.10 (2024-04-02)
 
 * Change logging approach. `-vvvv` now gives more helpful output.
