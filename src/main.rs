@@ -2,10 +2,12 @@
 //!   * The `httpserver` listens for incoming hooks, checks that they're valid, and adds them to a
 //!     `Queue`.
 //!   * The `jobrunner` pops elements from the `Queue` and runs them in parallel.
+//!
 //! These two components run as two different threads: the `httpserver` writes a solitary byte to
 //! an "event pipe" to wake up the `jobrunner` when the queue has new elements. We also wake up the
 //! `jobrunner` on SIGHUP and SIGCHLD.
 
+#![allow(clippy::too_many_arguments)]
 #![allow(clippy::type_complexity)]
 
 mod config;
