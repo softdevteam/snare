@@ -63,7 +63,7 @@ impl JobRunner {
     fn new(snare: Arc<Snare>) -> Result<Self, Box<dyn Error>> {
         let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned());
         let maxjobs = snare.conf.lock().unwrap().maxjobs;
-        assert!(maxjobs <= (std::usize::MAX - 1) / 2);
+        assert!(maxjobs <= (usize::MAX - 1) / 2);
         let mut running = Vec::with_capacity(maxjobs);
         running.resize_with(maxjobs, || None);
         let mut pollfds = Vec::with_capacity(maxjobs * 2 + 1);
@@ -101,10 +101,7 @@ impl JobRunner {
                 if timeout == -1
                     || fby_timeout < Duration::from_millis(timeout.try_into().unwrap_or(0))
                 {
-                    timeout = fby_timeout
-                        .as_millis()
-                        .try_into()
-                        .unwrap_or(c_int::max_value());
+                    timeout = fby_timeout.as_millis().try_into().unwrap_or(c_int::MAX);
                 }
             }
             poll(&mut self.pollfds, timeout).ok();

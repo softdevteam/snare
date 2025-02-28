@@ -102,13 +102,13 @@ impl Config {
                                         "Must allow at least 1 job",
                                     ))
                                 }
-                                Ok(x) if x > (std::usize::MAX - 1) / 2 => {
+                                Ok(x) if x > (usize::MAX - 1) / 2 => {
                                     return Err(error_at_span(
                                         &lexer,
                                         span,
                                         &format!(
                                             "Maximum number of jobs is {}",
-                                            (std::usize::MAX - 1) / 2
+                                            (usize::MAX - 1) / 2
                                         ),
                                     ))
                                 }
