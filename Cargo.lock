@@ -702,7 +702,7 @@ dependencies = [
 
 [[package]]
 name = "snare"
-version = "0.4.11"
+version = "0.4.12"
 dependencies = [
  "cfgrammar",
  "crypto-common",
