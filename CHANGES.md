@@ -1,3 +1,8 @@
+# snare 0.4.12 (2025-05-08)
+
+* Update dependencies.
+
+
 # snare 0.4.11 (2024-07-25)
 
 * Handle both JSON and urlencoded requests.
