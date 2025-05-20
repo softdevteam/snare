@@ -48,12 +48,7 @@ impl Queue {
 
     /// Are there any jobs in the queue?
     pub fn is_empty(&self) -> bool {
-        for v in self.q.values() {
-            if !v.is_empty() {
-                return false;
-            }
-        }
-        true
+        self.q.values().all(|x| x.is_empty())
     }
 
     /// Push a new request to the back of the queue.
