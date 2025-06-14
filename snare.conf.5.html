@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <link rel="stylesheet" href="/snare/mandoc.css" type="text/css" media="all"/>
+  <title>SNARE.CONF(5)</title>
+</head>
+<body>
+<table class="head">
+  <tr>
+    <td class="head-ltitle">SNARE.CONF(5)</td>
+    <td class="head-vol">File Formats Manual</td>
+    <td class="head-rtitle">SNARE.CONF(5)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id="NAME"><a class="permalink" href="#NAME">NAME</a></h1>
+<p class="Pp"><code class="Nm">snare.conf</code> &#x2014; <span class="Nd">snare
+    configuration file</span></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="DESCRIPTION"><a class="permalink" href="#DESCRIPTION">DESCRIPTION</a></h1>
+<p class="Pp"><code class="Nm">snare.conf</code> is the configuration file for
+    <a class="Xr">snare(1)</a>. It consists of one or more top-level options and
+    one GitHub block.</p>
+<p class="Pp">The top-level options are:</p>
+<dl class="Bl-tag">
+  <dt id="listen"><a class="permalink" href="#listen"><b class="Sy">listen
+    =</b></a> &quot;<i class="Em">address</i>&quot;;</dt>
+  <dd>is a mandatory address and port number to listen on. The format of
+      <i class="Em">address</i> is either:
+    <dl class="Bl-tag">
+      <dt>x.x.x.x:port</dt>
+      <dd>an IPv4 address and port. For example,
+          &#x2018;<code class="Li">0.0.0.0:8765</code>&#x2019; will listen on
+          port 8765 on for all IPv4 addresses.</dd>
+      <dt>[x:x:x]:port</dt>
+      <dd>an IPv6 address and port. For example,
+          &#x2018;<code class="Li">[::]:8765</code>&#x2019; will listen on port
+          8765 for all IPv4 and IPv6 addresses.</dd>
+    </dl>
+  </dd>
+  <dt id="maxjobs"><a class="permalink" href="#maxjobs"><b class="Sy">maxjobs
+    =</b></a>
+    <a class="permalink" href="#int"><i class="Em" id="int">int</i></a>;</dt>
+  <dd>is an optional non-zero positive integer specifying the maximum number of
+      jobs to run in parallel. Defaults to the number of CPUs in the
+    machine.</dd>
+  <dt id="user"><a class="permalink" href="#user"><b class="Sy">user =</b></a>
+    &quot;<i class="Em">user-name</i>&quot;;</dt>
+  <dd>is an optional username that <code class="Nm">snare.conf</code> will try
+      and change into after it has bound to a network port. Note that
+      <code class="Nm">snare.conf</code> will refuse to run as root unless
+      <b class="Sy">user</b> is specified. As part of changing user,
+      <code class="Nm">snare.conf</code>:
+    <ul class="Bl-bullet">
+      <li>changes its uid, euid, suid to the UID of
+        <i class="Em">user-name</i>.</li>
+      <li>changes its gid, egid, sgid to the primary GID of
+          <i class="Em">user-name</i>.</li>
+      <li>sets the $HOME environment variable to the home directory of
+          <i class="Em">user-name</i>.</li>
+      <li>sets the $USER environment variable to
+        <i class="Em">user-name</i>.</li>
+    </ul>
+    <p class="Pp">All other environment variables are passed through to commands
+        unchanged.</p>
+  </dd>
+  <dt id="github"><a class="permalink" href="#github"><b class="Sy">github { ...
+    }</b></a></dt>
+  <dd>specifies GitHub specific options.</dd>
+</dl>
+<p class="Pp">A &#x2018;github&#x2019; block supports the following options:</p>
+<dl class="Bl-tag">
+  <dt id="match"><a class="permalink" href="#match"><b class="Sy">match</b></a>
+    &quot;<i class="Em">regex</i>&quot; { <i class="Em">match-options }</i></dt>
+  <dd>where <i class="Em">regex</i> is a regular expression in
+      <a class="Lk" href="https://docs.rs/regex/">Rust regex format</a> that
+      must match against a &quot;owner/repo&quot; full repository name. If it
+      matches, then <i class="Em">match-options</i> are applied.
+      &quot;regex&quot; must match against the full repository name: in other
+      words, it is equivalent to
+      <a class="permalink" href="#_regex$"><i class="Em" id="_regex$">^regex$</i></a>.
+      Thus the regex &quot;a/b&quot; does not match against the full repository
+      name &quot;a/bc&quot;, but the regex &quot;a/b.*&quot; does match against
+      &quot;a/bc&quot;.</dd>
+</dl>
+<p class="Pp">A &#x2018;match&#x2019; block supports the following options:</p>
+<dl class="Bl-tag">
+  <dt id="cmd"><a class="permalink" href="#cmd"><b class="Sy">cmd =</b></a>
+    &quot;<i class="Em">shell-cmd</i>&quot;;</dt>
+  <dd>optionally specifies a command to be run. <i class="Em">shell-cmd</i> will
+      be executed via &#x2018;<code class="Li">$SHELL -c</code>&#x2019;. The
+      following escape sequences are recognised and replaced before execution:
+    <dl class="Bl-tag">
+      <dt id="_e"><a class="permalink" href="#_e"><b class="Sy">%e</b></a></dt>
+      <dd>the GitHub event type (e.g.
+          &#x2018;<code class="Li">pull_request</code>&#x2019;).</dd>
+      <dt id="_j"><a class="permalink" href="#_j"><b class="Sy">%j</b></a></dt>
+      <dd>the path to the GitHub JSON.</dd>
+      <dt id="_o"><a class="permalink" href="#_o"><b class="Sy">%o</b></a></dt>
+      <dd>the repository owner.</dd>
+      <dt id="_r"><a class="permalink" href="#_r"><b class="Sy">%r</b></a></dt>
+      <dd>the repository.</dd>
+      <dt id="__"><a class="permalink" href="#__"><b class="Sy">%%</b></a></dt>
+      <dd>a literal &#x2018;<code class="Li">%</code>&#x2019;.</dd>
+    </dl>
+    <p class="Pp">Note that &#x2018;<code class="Li">%</code>&#x2019; may not be
+        followed by any character other than those above.</p>
+    <p class="Pp">The escape sequences are guaranteed to satisfy the regular
+        expression &quot;[a-zA-Z0-9._-]+&quot; and not to be the strings
+        &quot;.&quot; or &quot;..&quot;. This means that they are safe to pass
+        as shell arguments and/or to be included in file system paths.</p>
+  </dd>
+  <dt id="errorcmd"><a class="permalink" href="#errorcmd"><b class="Sy">errorcmd
+    =</b></a> &quot;<i class="Em">shell-cmd</i>&quot;;</dt>
+  <dd>optionally specifies a command to be run when a job exits unsuccessfully.
+      <i class="Em">shell-cmd</i> will be executed via
+      &#x2018;<code class="Li">$SHELL -c</code>&#x2019;. The following escape
+      sequences are recognised and replaced before execution:
+    <dl class="Bl-tag">
+      <dt id="_e~2"><a class="permalink" href="#_e~2"><b class="Sy">%e</b></a></dt>
+      <dd>the GitHub event type (e.g.
+          &#x2018;<code class="Li">pull_request</code>&#x2019;).</dd>
+      <dt id="_j~2"><a class="permalink" href="#_j~2"><b class="Sy">%j</b></a></dt>
+      <dd>the path to the GitHub JSON.</dd>
+      <dt id="_o~2"><a class="permalink" href="#_o~2"><b class="Sy">%o</b></a></dt>
+      <dd>the repository owner.</dd>
+      <dt id="_r~2"><a class="permalink" href="#_r~2"><b class="Sy">%r</b></a></dt>
+      <dd>the repository.</dd>
+      <dt id="_s"><a class="permalink" href="#_s"><b class="Sy">%s</b></a></dt>
+      <dd>the path to the file containing the job's combined stderr /
+        stdout.</dd>
+      <dt id="_x"><a class="permalink" href="#_x"><b class="Sy">%x</b></a></dt>
+      <dd>the exit type: &quot;status&quot; (i.e. normal exit);
+          &quot;signal&quot;; or &quot;unknown&quot;.</dd>
+      <dt id="_?"><a class="permalink" href="#_?"><b class="Sy">%?</b></a></dt>
+      <dd>the exit status / signal number (either an integer or the literal
+          string &quot;unknown&quot;) that <i class="Em">cmd</i> failed
+        with.</dd>
+      <dt id="__~2"><a class="permalink" href="#__~2"><b class="Sy">%%</b></a></dt>
+      <dd>a literal &#x2018;<code class="Li">%</code>&#x2019;.</dd>
+    </dl>
+    <p class="Pp">Note that &#x2018;<code class="Li">%</code>&#x2019; may not be
+        followed by any character other than those above.</p>
+    <p class="Pp">The escape sequences are guaranteed to satisfy the regular
+        expression &quot;[a-zA-Z0-9._-]+&quot; and not to be the strings
+        &quot;.&quot; or &quot;..&quot;. This means that they are safe to pass
+        as shell arguments and/or to be included in file system paths.</p>
+  </dd>
+  <dt id="queue"><a class="permalink" href="#queue"><b class="Sy">queue
+    =</b></a> (evict | parallel | sequential);</dt>
+  <dd>specifies what to do when multiple requests for the same repository are
+      queued at once:
+    <dl class="Bl-tag">
+      <dt id="evict"><a class="permalink" href="#evict"><b class="Sy">evict</b></a></dt>
+      <dd>only run one job for this repository at a time. Additional jobs will
+          stay on the queue: if a new job comes in for that repository, it
+          evicts any previously queued jobs for that repository. In other words,
+          for this repository there can be at most one running job and one
+          queued job at any point.</dd>
+      <dt id="parallel"><a class="permalink" href="#parallel"><b class="Sy">parallel</b></a></dt>
+      <dd>run as many jobs for this repository in parallel as possible.</dd>
+      <dt id="sequential"><a class="permalink" href="#sequential"><b class="Sy">sequential</b></a></dt>
+      <dd>only run one job for this repository at a time. Additional jobs will
+          stay on the queue and be executed in FIFO order.</dd>
+    </dl>
+    <p class="Pp">The default <b class="Sy">match</b> block sets this to
+        <b class="Sy">sequential</b>, which is always safe, though at the
+        possible expense of lower job throughput for any given repository.</p>
+  </dd>
+  <dt id="secret"><a class="permalink" href="#secret"><b class="Sy">secret
+    =</b></a> &quot;<i class="Em">secret</i>&quot;;</dt>
+  <dd>is the optional GitHub secret used to sign the webhook request. This
+      allows <code class="Nm">snare.conf</code> to tell the difference between
+      genuine webhook requests and those from malfeasants. Although this is
+      optional, we
+      <a class="permalink" href="#highly"><i class="Em" id="highly">highly</i></a>
+      recommend setting it in all cases. Note also that if a GitHub request is
+      signed, but you have not specified a secret, then snare will return the
+      request as &#x201C;unauthorised&#x201D; to remind you to use the secret at
+      both ends.</dd>
+  <dt id="timeout"><a class="permalink" href="#timeout"><b class="Sy">timeout
+    =</b></a>
+    <a class="permalink" href="#period"><i class="Em" id="period">period</i></a>;</dt>
+  <dd>specifies the elapsed time, as a positive integer, in seconds that a
+      process can run before being sent SIGTERM. The default
+      <b class="Sy">match</b> block sets this to one hour (3600 seconds).</dd>
+</dl>
+<p class="Pp"><b class="Sy">match</b> blocks are evaluated in order from top to
+    bottom with each successful match overriding previous settings. A default
+    <b class="Sy">match</b> block is inserted before any user
+    <b class="Sy">match</b> blocks:</p>
+<div class="Bd Pp Bd-indent Li">
+<pre>match &quot;.*&quot; {
+  queue = sequential;
+  timeout = 3600;
+}</pre>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="EXAMPLES"><a class="permalink" href="#EXAMPLES">EXAMPLES</a></h1>
+<p class="Pp">The minimal recommended <code class="Nm">snare.conf</code> file is
+    as follows:</p>
+<div class="Bd Pp Bd-indent Li">
+<pre>listen = &quot;&lt;address&gt;:&lt;port&gt;&quot;;
+github {
+  match &quot;.*&quot; {
+    cmd = &quot;/path/to/prps/%o/%r %e %j&quot;;
+    errorcmd = &quot;cat %s | mailx -s \&quot;snare error: github.com/%o/%r\&quot; someone@example.com&quot;;
+    secret = &quot;&lt;secret&gt;&quot;;
+  }
+}</pre>
+</div>
+<p class="Pp">where &quot;/path/to/prps&quot; is a path to a directory where
+    per-repo programs are stored. Each repository then has a unique program
+    &quot;%o/%r&quot; which will be executed with two arguments: the GitHub
+    event; and the path to the GitHub JSON. If a job exits unsuccessfully then
+    an email will be sent to someone@example.com containing the job's comined
+    stderr and stdout output (assuming that a suitable sendmail clone has been
+    installed and activated).</p>
+<p class="Pp">The top-to-bottom evaluation of match blocks allow users to
+    specify defaults which are only overridden for specific repositories. For
+    example, for the following configuration file:</p>
+<div class="Bd Pp Bd-indent Li">
+<pre>listen = &quot;&lt;address&gt;:&lt;port&gt;&quot;;
+github {
+  match &quot;.*&quot; {
+    cmd = &quot;/path/to/prps/%o/%r %e %j&quot;;
+    errorcmd = &quot;cat %s | mailx -s \&quot;snare error: github.com/%o/%r\&quot; abc@def.com&quot;;
+    secret = &quot;sec&quot;;
+  }
+  match &quot;a/b&quot; {
+    errorcmd = &quot;lpr %s&quot;;
+  }
+}</pre>
+</div>
+<p class="Pp">the following repositories will have these settings:</p>
+<div class="Bd Pp Bd-indent Li">
+<pre>a/b:
+  queue = sequential
+  timeout = 3600
+  cmd = &quot;/path/to/prps/%o/%r %e %j&quot;;
+  errorcmd = &quot;lpr %s&quot;;
+  secret = &quot;sec&quot;
+c/d:
+  queue = sequential
+  timeout = 3600
+  cmd = &quot;/path/to/prps/%o/%r %e %j&quot;;
+  errorcmd = &quot;cat %s | mailx -s \&quot;snare error: github.com/%o/%r\&quot; abc@def.com&quot;;
+  secret = &quot;sec&quot;</pre>
+</div>
+<p class="Pp">The following program expects to be called with an event and a
+    JSON path (i.e. &quot;%e %j&quot;) and uses shell script to send a list of
+    commits and diffs to the address specified in $EMAIL on each
+    &#x201C;push&#x201D; to master. It works for any public GitHub
+  repository:</p>
+<div class="Bd Pp Bd-indent Li">
+<pre>#! /bin/sh
+
+set -euf
+
+# A list of email addresses separated by spaces.
+EMAILS=&quot;someone@example.com someone.else@example.com&quot;
+# A GitHub URL either https or git.
+REPO_URL=&quot;git@github.com:owner/repo.git&quot;
+
+if [ &quot;$1&quot; != &quot;push&quot; ]; then
+    exit 0
+fi
+
+ref=`jq .ref &quot;$2&quot; | tr -d '
+if [ &quot;$ref&quot; != &quot;refs/heads/master&quot; ]; then
+    exit 0
+fi
+
+repo_fullname=`jq .repository.full_name &quot;$2&quot; | tr -d '
+repo_url=`jq .repository.html_url &quot;$2&quot; | tr -d '
+before_hash=`jq .before &quot;$2&quot; | tr -d '
+after_hash=`jq .after &quot;$2&quot; | tr -d '
+echo &quot;$before_hash&quot; | grep -E &quot;^[a-fA-F0-9]+$&quot; 2&gt;&amp;1 &gt; /dev/null
+echo &quot;$after_hash&quot; | grep -E &quot;^[a-fA-F0-9]+$&quot; 2&gt;&amp;1 &gt; /dev/null
+
+git clone &quot;$REPO_URL&quot; repo
+cd repo
+for email in `echo &quot;$EMAILS&quot;`; do
+    git log --reverse -p &quot;$before_hash..$after_hash&quot; \
+      | mail -s &quot;Push to $repo_fullname&quot; &quot;$email&quot;
+done</pre>
+</div>
+<p class="Pp">where <a class="Lk" href="https://stedolan.github.io/jq/">jq</a>
+    is a command-line JSON processor. Depending on your needs, you can make this
+    type of script arbitrarily more complex and powerful (for example, not
+    cloning afresh on each pull).</p>
+<p class="Pp">Note that this program is deliberately untrusting of external
+    input: it is careful to quote all arguments obtained from JSON; and it uses
+    a fixed directory name (&#x201C;repo&#x201D;) rather than a file name from
+    JSON that might include characters (such as &#x201C;../..&#x201D;) that
+    would cause the script to leak data about other parts of the file
+  system.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="SEE_ALSO"><a class="permalink" href="#SEE_ALSO">SEE
+  ALSO</a></h1>
+<p class="Pp"><a class="Xr">snare(1)</a></p>
+<p class="Pp"><a class="Lk" href="https://developer.github.com/webhooks/">GitHub's
+    webhooks documentation</a>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="AUTHORS"><a class="permalink" href="#AUTHORS">AUTHORS</a></h1>
+<p class="Pp"><a class="Xr">snare(1)</a> was written by
+    <span class="An">Laurence Tratt</span>
+    <a class="Lk" href="https://tratt.net/laurie/">https://tratt.net/laurie/</a></p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2020-02-10</td>
+    <td class="foot-os">Debian</td>
+  </tr>
+</table>
+</body>
+</html>
