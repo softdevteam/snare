@@ -293,11 +293,10 @@ impl JobRunner {
                         check_queue = false;
                         tmp_failure = false;
                     }
-                    (true, true) => {
+                    (false | true, true) => {
                         check_queue = true;
                         tmp_failure = true;
                     }
-                    (false, true) => unreachable!(),
                 }
             }
         }
@@ -336,7 +335,7 @@ impl JobRunner {
                         Err(Some(qj)) => {
                             // The job couldn't be run for temporary reasons: we'll retry later.
                             queue.push_front(qj);
-                            return (true, true);
+                            return (false, true);
                         }
                         Err(None) => {
                             // The job couldn't be run for permanent reasons: it has been consumed
