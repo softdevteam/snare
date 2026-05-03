@@ -264,9 +264,18 @@ impl JobRunner {
                             } else if let Some(errorchild) =
                                 self.run_errorcmd(job, exit_type, &exit_code)
                             {
+                                // The main command might have exceeded the timeout, so if we run
+                                // `errorcmd` it might immediately be killed. Reset the timer to
+                                // ensure `errorcmd` has time to run.
+                                let finish_by = Instant::now()
+                                    .checked_add(Duration::from_millis(
+                                        job.rconf.timeout.saturating_mul(1000),
+                                    ))
+                                    .unwrap();
                                 let job = &mut self.running[i].as_mut().unwrap();
                                 job.child = errorchild;
                                 job.is_errorcmd = true;
+                                job.finish_by = finish_by;
                                 continue;
                             }
                         }
