@@ -1,3 +1,18 @@
+# snare 0.4.13 (2026-05-03)
+
+* Split "check queue" and "temporary failure" into two. Previously "there is
+  stuff in the queue" caused snare to initiate "continually wake up if there's
+  a temporary failure".
+
+* Simplify timeout checks and remove a race condition.
+
+* Ensure that temporary failures do not cause the queue to be viewed as empty.
+
+* Reset the timeout before running `errorcmd` (if it exists). Previously, if
+  the main command exceeded the timeout, `errorcmd` would immediately be
+  considered to have exceeded the timeout as well.
+
+
 # snare 0.4.12 (2025-05-08)
 
 * Update dependencies.
