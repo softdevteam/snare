@@ -54,8 +54,11 @@ github {
 
 where:
 
- * `ip-address` is either an IPv4 or IPv6 address and `port` a port on which an
-   HTTP server will listen.
+ * `listen` is either an IPv4 or IPv6 address plus a port on which the HTTP
+   server will listen, or `unix:` followed by a path to a Unix-domain socket
+   (for example `listen = "unix:/run/snare.sock";`). A Unix socket is useful
+   when a reverse proxy on the same machine is the only client that needs to
+   connect to `snare`.
  * `cmd` is the command that will be executed when a webhook is received. In
    this case, `/path/to/prps` is a path to a directory where per-repo programs
    are stored. For a repository `repo` owned by `owner` the command:

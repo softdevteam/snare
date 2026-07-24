@@ -3,6 +3,7 @@ use std::{
     error::Error,
     io::{BufRead, BufReader, Read, Write},
     net::{Shutdown, TcpListener, TcpStream},
+    os::unix::net::{UnixListener, UnixStream},
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -16,7 +17,7 @@ use percent_encoding::percent_decode;
 use secstr::SecStr;
 use sha2::Sha256;
 
-use crate::{queue::QueueJob, Snare};
+use crate::{config::ListenAddr, queue::QueueJob, Snare};
 
 /// How many connections to accept simultaneously? Limiting this number stops attackers from
 /// causing us to use too many resources.
@@ -27,17 +28,105 @@ static NET_TIMEOUT: Duration = Duration::from_secs(10);
 /// to stop large numbers of requests causing us to run out of memory.
 static MAX_HTTP_BODY_SIZE: usize = 64 * 1024;
 
+enum Listener {
+    Tcp(TcpListener),
+    Unix(UnixListener),
+}
+
+impl Listener {
+    fn bind(addr: &ListenAddr) -> std::io::Result<Self> {
+        match addr {
+            ListenAddr::Tcp(addr) => TcpListener::bind(addr).map(Self::Tcp),
+            ListenAddr::Unix(path) => UnixListener::bind(path).map(Self::Unix),
+        }
+    }
+
+    fn accept(&self) -> std::io::Result<Stream> {
+        match self {
+            Self::Tcp(listener) => listener.accept().map(|(stream, _)| Stream::Tcp(stream)),
+            Self::Unix(listener) => listener.accept().map(|(stream, _)| Stream::Unix(stream)),
+        }
+    }
+}
+
+enum Stream {
+    Tcp(TcpStream),
+    Unix(UnixStream),
+}
+
+impl Stream {
+    fn set_read_timeout(&self, timeout: Option<Duration>) -> std::io::Result<()> {
+        match self {
+            Self::Tcp(stream) => stream.set_read_timeout(timeout),
+            Self::Unix(stream) => stream.set_read_timeout(timeout),
+        }
+    }
+
+    fn set_write_timeout(&self, timeout: Option<Duration>) -> std::io::Result<()> {
+        match self {
+            Self::Tcp(stream) => stream.set_write_timeout(timeout),
+            Self::Unix(stream) => stream.set_write_timeout(timeout),
+        }
+    }
+
+    fn shutdown(&self, how: Shutdown) -> std::io::Result<()> {
+        match self {
+            Self::Tcp(stream) => stream.shutdown(how),
+            Self::Unix(stream) => stream.shutdown(how),
+        }
+    }
+}
+
+impl Read for Stream {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        match self {
+            Self::Tcp(stream) => stream.read(buf),
+            Self::Unix(stream) => stream.read(buf),
+        }
+    }
+}
+
+impl Write for Stream {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        match self {
+            Self::Tcp(stream) => stream.write(buf),
+            Self::Unix(stream) => stream.write(buf),
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        match self {
+            Self::Tcp(stream) => stream.flush(),
+            Self::Unix(stream) => stream.flush(),
+        }
+    }
+}
+
 pub(crate) fn serve(snare: Arc<Snare>) -> Result<(), Box<dyn Error>> {
-    let listener = TcpListener::bind(snare.conf.lock().unwrap().listen)?;
+    let listener = Listener::bind(&snare.conf.lock().unwrap().listen)?;
     #[cfg(feature = "_internal_testing")]
     {
         if let Ok(p) = std::env::var("SNARE_DEBUG_PORT_PATH") {
-            std::fs::write(p, &listener.local_addr().unwrap().port().to_string()).unwrap();
+            let value = match &listener {
+                Listener::Tcp(listener) => listener.local_addr().unwrap().port().to_string(),
+                Listener::Unix(listener) => listener
+                    .local_addr()
+                    .unwrap()
+                    .as_pathname()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned(),
+            };
+            std::fs::write(p, value).unwrap();
         }
     }
 
     let active = Arc::new(AtomicUsize::new(0));
-    for stream in listener.incoming().flatten() {
+    loop {
+        let stream = match listener.accept() {
+            Ok(stream) => stream,
+            Err(_) => continue,
+        };
         // We want to keep a limit on how many threads are started concurrently, so that an
         // attacker can't DOS the machine. `active` keeps track of how many threads are (or are
         // just about to be) active. Since the common case is that we haven't hit the limit, we
@@ -60,11 +149,10 @@ pub(crate) fn serve(snare: Arc<Snare>) -> Result<(), Box<dyn Error>> {
             active.fetch_sub(1, Ordering::Relaxed);
         });
     }
-    Ok(())
 }
 
 /// Try processing an HTTP request.
-fn request(snare: &Arc<Snare>, mut stream: TcpStream) {
+fn request(snare: &Arc<Snare>, mut stream: Stream) {
     match (
         stream.set_read_timeout(Some(NET_TIMEOUT)),
         stream.set_write_timeout(Some(NET_TIMEOUT)),
@@ -235,7 +323,7 @@ fn request(snare: &Arc<Snare>, mut stream: TcpStream) {
 
 /// A very literal, and rather unforgiving, implementation of RFC2616 (HTTP/1.1), returning the URL
 /// of GET requests: returns `Err` for anything else.
-fn parse_get(stream: &mut TcpStream) -> Result<(HashMap<String, String>, Vec<u8>), Box<dyn Error>> {
+fn parse_get(stream: &mut Stream) -> Result<(HashMap<String, String>, Vec<u8>), Box<dyn Error>> {
     let mut rdr = BufReader::new(stream);
     let mut req_line = String::new();
     rdr.read_line(&mut req_line)?;
@@ -294,19 +382,19 @@ fn parse_get(stream: &mut TcpStream) -> Result<(HashMap<String, String>, Vec<u8>
     Ok((headers_map, body))
 }
 
-fn http_200(mut stream: TcpStream) {
+fn http_200(mut stream: Stream) {
     stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n").ok();
 }
 
-fn http_400(mut stream: TcpStream) {
+fn http_400(mut stream: Stream) {
     stream.write_all(b"HTTP/1.1 400\r\n\r\n").ok();
 }
 
-fn http_401(mut stream: TcpStream) {
+fn http_401(mut stream: Stream) {
     stream.write_all(b"HTTP/1.1 401\r\n\r\n").ok();
 }
 
-fn http_500(mut stream: TcpStream) {
+fn http_500(mut stream: Stream) {
     stream.write_all(b"HTTP/1.1 500\r\n\r\n").ok();
 }
 

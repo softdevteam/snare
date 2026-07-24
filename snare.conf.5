@@ -13,10 +13,10 @@ It consists of one or more top-level options and one GitHub block.
 The top-level options are:
 .Bl -tag -width Ds
 .It Sy listen = Qq Em address ;
-is a mandatory address and port number to listen on.
+is a mandatory network address or Unix-domain socket path to listen on.
 The format of
 .Em address
-is either:
+is one of:
 .Bl -tag -width -Ds
 .It x.x.x.x:port
 an IPv4 address and port.
@@ -28,6 +28,13 @@ an IPv6 address and port.
 For example,
 .Ql [::]:8765
 will listen on port 8765 for all IPv4 and IPv6 addresses.
+.It unix:path
+a path at which to create a Unix-domain socket.
+For example,
+.Ql unix:/run/snare.sock .
+The path must not already exist when
+.Nm
+starts.
 .El
 .It Sy maxjobs = Em int ;
 is an optional non-zero positive integer specifying the maximum number of

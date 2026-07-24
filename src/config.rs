@@ -1,4 +1,10 @@
-use std::{fs::read_to_string, net::SocketAddr, path::Path, process, str::FromStr};
+use std::{
+    fs::read_to_string,
+    net::SocketAddr,
+    path::{Path, PathBuf},
+    process,
+    str::FromStr,
+};
 
 use crypto_common::InvalidLength;
 use hmac::{Hmac, Mac};
@@ -18,14 +24,19 @@ lrlex_mod!("config.l");
 lrpar_mod!("config.y");
 
 pub struct Config {
-    /// The IP address/port on which to listen.
-    pub listen: SocketAddr,
+    /// The address on which to listen.
+    pub listen: ListenAddr,
     /// The maximum number of parallel jobs to run.
     pub maxjobs: usize,
     /// The GitHub block.
     pub github: GitHub,
     /// The Unix user to change to after snare has bound itself to a network port.
     pub user: Option<String>,
+}
+
+pub enum ListenAddr {
+    Tcp(SocketAddr),
+    Unix(PathBuf),
 }
 
 impl Config {
@@ -74,14 +85,28 @@ impl Config {
                                 ));
                             }
                             let listen_str = unescape_str(lexer.span_str(span));
-                            match SocketAddr::from_str(&listen_str) {
-                                Ok(l) => listen = Some(l),
-                                Err(e) => {
+                            if let Some(path) = listen_str.strip_prefix("unix:") {
+                                if path.is_empty() {
                                     return Err(error_at_span(
                                         &lexer,
                                         span,
-                                        &format!("Invalid listen address '{}': {}", listen_str, e),
+                                        "A Unix listen socket path must not be empty",
                                     ));
+                                }
+                                listen = Some(ListenAddr::Unix(PathBuf::from(path)));
+                            } else {
+                                match SocketAddr::from_str(&listen_str) {
+                                    Ok(l) => listen = Some(ListenAddr::Tcp(l)),
+                                    Err(e) => {
+                                        return Err(error_at_span(
+                                            &lexer,
+                                            span,
+                                            &format!(
+                                                "Invalid listen address '{}': {}",
+                                                listen_str, e
+                                            ),
+                                        ));
+                                    }
                                 }
                             }
                         }

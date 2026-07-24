@@ -2,6 +2,7 @@
 //   * An IPv4 address (e.g. "0.0.0.0:8011" listens on all IPv4 interfaces).
 //   * An IPv6 address (e.g. "[::]:8011" listens on all IPv4 and all IPv6
 //     interfaces).
+//   * "unix:" followed by a Unix-domain socket path (e.g. "unix:snare.sock").
 listen = "0.0.0.0:8011";
 
 github {
