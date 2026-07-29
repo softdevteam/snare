@@ -1,3 +1,4 @@
+use nix::unistd::Uid;
 use std::{error::Error, fs::read_dir, thread::sleep};
 use tempfile::Builder;
 
@@ -80,11 +81,21 @@ github {{
 
 #[test]
 fn sequential() {
+    if Uid::current().is_root() {
+        println!("test skipped: cannot run as root");
+        return;
+    }
+
     assert_eq!(run_queue("sequential", 20, "", 2).unwrap(), 20);
 }
 
 #[test]
 fn evict() {
+    if Uid::current().is_root() {
+        println!("test skipped: cannot run as root");
+        return;
+    }
+
     let i = run_queue("evict", 20, "&& sleep 0.4", 4).unwrap();
     // We have a fairly healthy `sleep` above which means most of our requests are likely to be
     // received while the first `cmd` is still running. However, we can't guarantee that, so we are
@@ -99,5 +110,10 @@ fn evict() {
 
 #[test]
 fn parallel() {
+    if Uid::current().is_root() {
+        println!("test skipped: cannot run as root");
+        return;
+    }
+
     assert_eq!(run_queue("parallel", 20, "", 1,).unwrap(), 20);
 }

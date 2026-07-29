@@ -1,3 +1,4 @@
+use nix::unistd::Uid;
 use std::{error::Error, path::PathBuf, thread::sleep};
 use tempfile::{Builder, TempDir};
 
@@ -64,6 +65,10 @@ X-GitHub-Hook-Installation-Target-Type: repository
 
 #[test]
 fn ping() -> Result<(), Box<dyn Error>> {
+    if Uid::current().is_root() {
+        println!("test skipped: cannot run as root");
+        return Ok(());
+    }
     let (cfg, _td, _tp) = cfg(true)?;
     run_success(
         &cfg,
@@ -84,6 +89,11 @@ fn ping() -> Result<(), Box<dyn Error>> {
 fn successful_auth() -> Result<(), Box<dyn Error>> {
     // This test checks that snare both responds to, and executes the correct command for, a given
     // (user, repo) pair. It does that by checking that snare executes `touch <tempfile>`.
+
+    if Uid::current().is_root() {
+        println!("test skipped: cannot run as root");
+        return Ok(());
+    }
 
     let (cfg, _td, tp) = cfg(true)?;
     assert!(!tp.is_file());
@@ -112,6 +122,11 @@ fn bad_sha256() -> Result<(), Box<dyn Error>> {
     // doesn't execute any commands (so, by proxy, we assume that snare doesn't authenticate the
     // request).
 
+    if Uid::current().is_root() {
+        println!("test skipped: cannot run as root");
+        return Ok(());
+    }
+
     let (cfg, _td, tp) = cfg(true)?;
     assert!(!tp.is_file());
     // Example secret and payload from
@@ -137,6 +152,11 @@ fn bad_sha256() -> Result<(), Box<dyn Error>> {
 fn wrong_secret() -> Result<(), Box<dyn Error>> {
     // Takes the example from [full_request], alters the client-side secret, and checks that this
     // causes snare not execute any commands (so, by proxy, we assume that authentication failed).
+
+    if Uid::current().is_root() {
+        println!("test skipped: cannot run as root");
+        return Ok(());
+    }
 
     let (cfg, _td, tp) = cfg(false)?;
     assert!(!tp.is_file());

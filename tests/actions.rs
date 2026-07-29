@@ -1,3 +1,4 @@
+use nix::unistd::Uid;
 use std::{fs::read_to_string, thread::sleep};
 use tempfile::Builder;
 
@@ -7,6 +8,11 @@ use common::{run_success, SNARE_PAUSE};
 #[test]
 fn multiple() {
     // This tests that when there are multiple actions, the correct one takes effect.
+
+    if Uid::current().is_root() {
+        println!("test skipped: cannot run as root");
+        return;
+    }
 
     let td = Builder::new()
         .tempdir_in(env!("CARGO_TARGET_TMPDIR"))
@@ -88,6 +94,11 @@ X-GitHub-Hook-Installation-Target-Type: repository
 #[test]
 fn errorcmd() {
     // This tests both large stdout/stderr output from `cmd` as well as that `errorcmd` works.
+
+    if Uid::current().is_root() {
+        println!("test skipped: cannot run as root");
+        return;
+    }
 
     let td = Builder::new()
         .tempdir_in(env!("CARGO_TARGET_TMPDIR"))
