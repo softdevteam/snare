@@ -8,8 +8,9 @@ use std::{
     fs::read_to_string,
     io::{Read, Write},
     net::{Shutdown, TcpStream},
-    os::unix::process::ExitStatusExt,
+    os::unix::{net::UnixStream, process::ExitStatusExt},
     panic::{catch_unwind, resume_unwind, RefUnwindSafe, UnwindSafe},
+    path::Path,
     process::{Child, Stdio},
     rc::Rc,
     thread::sleep,
@@ -97,6 +98,68 @@ where
 
     kill(Pid::from_raw(sn.id().try_into().unwrap()), Signal::SIGTERM).unwrap();
     match sn.wait_timeout(SNARE_WAIT_TIMEOUT) {
+        Err(e) => Err(e.into()),
+        Ok(Some(es)) => {
+            if let Some(Signal::SIGTERM) = es.signal().map(|x| Signal::try_from(x).unwrap()) {
+                Ok(())
+            } else {
+                Err(format!("Expected successful exit but got '{es:?}'").into())
+            }
+        }
+        Ok(None) => Err("timeout waiting for snare to exit".into()),
+    }
+}
+
+#[allow(dead_code)]
+pub fn run_unix_success(
+    cfg: &str,
+    socket_path: &Path,
+    request: &str,
+) -> Result<(), Box<dyn Error>> {
+    let (mut sn, tp) = snare_command(cfg)?;
+    for i in 0..5 {
+        match sn.try_wait() {
+            Ok(None) => break,
+            _ => {
+                if i < 4 {
+                    sleep(Duration::from_secs(1))
+                } else {
+                    panic!()
+                }
+            }
+        }
+    }
+
+    let r = catch_unwind(|| {
+        assert_eq!(
+            read_to_string(tp.path()).unwrap(),
+            socket_path.to_str().unwrap()
+        );
+
+        let mut stream = UnixStream::connect(socket_path).unwrap();
+        stream.write_all(request.as_bytes()).unwrap();
+        stream.shutdown(Shutdown::Write).unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).unwrap();
+        assert!(
+            response.starts_with("HTTP/1.1 200 OK"),
+            "Received HTTP response '{}'",
+            response
+        );
+    });
+
+    kill(Pid::from_raw(sn.id().try_into().unwrap()), Signal::SIGTERM).unwrap();
+    let exit_status = sn.wait_timeout(SNARE_WAIT_TIMEOUT);
+    if let Err(r) = r {
+        let mut stdout = String::new();
+        let mut stderr = String::new();
+        sn.stdout.as_mut().unwrap().read_to_string(&mut stdout).ok();
+        sn.stderr.as_mut().unwrap().read_to_string(&mut stderr).ok();
+        eprintln!("snare child process:\n\n  stdout:\n{stdout}\n  stderr:\n{stderr}");
+        resume_unwind(r);
+    }
+
+    match exit_status {
         Err(e) => Err(e.into()),
         Ok(Some(es)) => {
             if let Some(Signal::SIGTERM) = es.signal().map(|x| Signal::try_from(x).unwrap()) {

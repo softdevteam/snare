@@ -1,3 +1,8 @@
+# Unreleased
+
+* Allow the HTTP server to listen on a Unix-domain socket.
+
+
 # snare 0.4.13 (2026-05-03)
 
 * Split "check queue" and "temporary failure" into two. Previously "there is
