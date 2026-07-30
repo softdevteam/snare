@@ -1,3 +1,4 @@
+use nix::unistd::Uid;
 use std::error::Error;
 
 mod common;
@@ -5,6 +6,11 @@ use common::run_success;
 
 #[test]
 fn content_type_json() -> Result<(), Box<dyn Error>> {
+    if Uid::current().is_root() {
+        println!("test skipped: cannot run as root");
+        return Ok(());
+    }
+
     run_success(
         r#"
             listen = "127.0.0.1:0";
@@ -53,6 +59,11 @@ X-GitHub-Hook-Installation-Target-Type: repository
 
 #[test]
 fn content_type_url_encoded() -> Result<(), Box<dyn Error>> {
+    if Uid::current().is_root() {
+        println!("test skipped: cannot run as root");
+        return Ok(());
+    }
+
     run_success(
         r#"
             listen = "127.0.0.1:0";
