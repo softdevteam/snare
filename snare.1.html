@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <link rel="stylesheet" href="/snare/mandoc.css" type="text/css" media="all"/>
+  <title>SNARE(1)</title>
+</head>
+<body>
+<table class="head">
+  <tr>
+    <td class="head-ltitle">SNARE(1)</td>
+    <td class="head-vol">General Commands Manual</td>
+    <td class="head-rtitle">SNARE(1)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id="NAME"><a class="permalink" href="#NAME">NAME</a></h1>
+<p class="Pp"><code class="Nm">snare</code> &#x2014; <span class="Nd">GitHub
+    webhooks runner</span></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="SYNOPSIS"><a class="permalink" href="#SYNOPSIS">SYNOPSIS</a></h1>
+<table class="Nm">
+  <tr>
+    <td><code class="Nm">snare</code></td>
+    <td>[<code class="Fl">-c</code> <var class="Ar">config-file</var>]
+      [<code class="Fl">-d</code>] [<code class="Fl">-v</code>]</td>
+  </tr>
+</table>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="DESCRIPTION"><a class="permalink" href="#DESCRIPTION">DESCRIPTION</a></h1>
+<p class="Pp"><code class="Nm">snare</code> is a GitHub webhooks daemon. When
+    <code class="Nm">snare</code> receives a webhook event from a given
+    repository, it authenticates the request, and then executes a user-defined
+    &#x201C;per-repo program&#x201D; with information about the webhook event.
+    The &#x201C;per-repo program&#x201D; is run in a freshly created temporary
+    directory which is removed once it has completed.</p>
+<p class="Pp">The options are as follows:</p>
+<dl class="Bl-tag">
+  <dt id="c"><a class="permalink" href="#c"><code class="Fl">-c</code></a>
+    <var class="Ar">config-file</var></dt>
+  <dd>is a path to a <span class="Pa">snare.conf</span> configuration file. If
+      not specified, <code class="Nm">snare</code> assumes the configuration
+      file is located at <span class="Pa">/etc/snare/snare.conf/</span>.</dd>
+  <dt id="d"><a class="permalink" href="#d"><code class="Fl">-d</code></a></dt>
+  <dd>tells <code class="Nm">snare</code> not to daemonise: in other words,
+      `snare` stays in the foreground and logs errors to stderr. This can be
+      useful for debugging.</dd>
+  <dt id="v"><a class="permalink" href="#v"><code class="Fl">-v</code></a></dt>
+  <dd>enables more verbose logging. <code class="Fl">-v</code> may be specified
+      multiple times, with each increasing the quantity of logging.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="INTEGRATION_WITH_GITHUB"><a class="permalink" href="#INTEGRATION_WITH_GITHUB">INTEGRATION
+  WITH GITHUB</a></h1>
+<p class="Pp"><code class="Nm">snare</code> runs an HTTP server which GitHub can
+    send webhook requests to. Configuring a webhook for a given GitHub
+    repository is relatively simple: go to that repository, then
+    &#x201C;Settings &gt; Webhooks &gt; Add webhook&#x201D;. For
+    &#x201C;payload&#x201D;, specify
+    &#x201C;http://yourmachine.com:port/&#x201D;, specify a
+    &#x201C;secret&#x201D; (which you will then reuse as the
+    <a class="permalink" href="#secret"><b class="Sy" id="secret">secret</b></a>
+    in <a class="Xr">snare.conf(5)</a>) and then choose which events you wish
+    GitHub to deliver.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="HTTPS/TLS"><a class="permalink" href="#HTTPS/TLS">HTTPS/TLS</a></h1>
+<p class="Pp"><code class="Nm">snare</code> runs an HTTP server. If you wish, as
+    is recommended, to send your webhooks over an encrypted connection, you will
+    need to run a proxy in front of <code class="Nm">snare</code>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="DIAGNOSTICS"><a class="permalink" href="#DIAGNOSTICS">DIAGNOSTICS</a></h1>
+<p class="Pp">When run as a daemon, <code class="Nm">snare</code> logs to
+    <a class="Xr">syslogd(8)</a> under the &#x201C;daemon&#x201D; facility.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="SEE_ALSO"><a class="permalink" href="#SEE_ALSO">SEE
+  ALSO</a></h1>
+<p class="Pp"><a class="Xr">snare.conf(5)</a></p>
+<p class="Pp"><a class="Lk" href="https://tratt.net/laurie/src/snare">https://tratt.net/laurie/src/snare</a></p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2020-02-10</td>
+    <td class="foot-os">Debian</td>
+  </tr>
+</table>
+</body>
+</html>
