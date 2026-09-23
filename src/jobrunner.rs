@@ -12,7 +12,7 @@ use std::{
     env,
     error::Error,
     fs::{self, remove_file},
-    io::{Read, Write},
+    io::{self, Read, Write},
     os::unix::{
         io::{AsRawFd, RawFd},
         process::ExitStatusExt,
@@ -24,7 +24,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use libc::c_int;
+use libc::{c_int, ioctl};
 use nix::{
     fcntl::{fcntl, FcntlArg, OFlag},
     poll::{poll, PollFd, PollFlags},
@@ -187,8 +187,10 @@ impl JobRunner {
 
             // Has the HTTP server told us that we should check for new jobs and/or SIGCHLD/SIGHUP
             // has been received?
+            let mut check_exit = false;
             match self.pollfds[self.maxjobs * 2].revents() {
                 Some(flags) if flags == PollFlags::POLLIN => {
+                    check_exit = true;
                     check_queue = true;
                     // It's fine for us to drain the event pipe completely: we'll process all the
                     // events it contains below.
@@ -218,19 +220,22 @@ impl JobRunner {
                     }
                 }
 
-                if let Some(Job {
-                    stderr_hup: true,
-                    stdout_hup: true,
-                    ..
-                }) = self.running[i]
-                {
+                // Ideally we'd fold this into the `if` below but that requires the 2024 edition of
+                // Rust.
+                if !check_exit {
+                    continue;
+                }
+
+                // If a child process has exited, then we check all child processes to see if they
+                // are the one that has exited.
+                if let Some(job) = self.running[i].as_mut() {
                     // In the below, we know from the `let Some(_)` that `self.running[i]` is
                     // `Some(_)` and the unwrap thus safe.
                     let mut exited = false;
                     let mut exited_success = false;
                     let mut exit_type = "";
                     let mut exit_code = String::new();
-                    match self.running[i].as_mut().unwrap().child.try_wait() {
+                    match job.child.try_wait() {
                         Ok(Some(status)) => {
                             exited = true;
                             exited_success = status.success();
@@ -254,7 +259,25 @@ impl JobRunner {
                         Ok(None) => (),
                     }
                     if exited {
+                        // When a child process exits, we might not yet have read all the pending
+                        // data. However, there is a complication: while a child process will, on
+                        // exit, have had all its file handles closed by the kernel, it may have
+                        // passed those handles onto grandchildren which may be keeping them open.
+                        // That means that simply reading until EOF might never finish.
+                        // Fortunately, POSiX guarantees that the in "normal exit" situation all
+                        // the bytes written before exit are available for us to read. We therefore
+                        // read everything that's readily available in the pipe knowing that deals
+                        // well with the "normal exit" situation and doesn't stall us in the
+                        // "grandchildren are alive" situation.
+                        if let Some(mut stderr) = job.child.stderr.take() {
+                            drain_pipe(&mut stderr, job.stderrout.as_file_mut());
+                        }
+                        if let Some(mut stdout) = job.child.stdout.take() {
+                            drain_pipe(&mut stdout, job.stderrout.as_file_mut());
+                        }
                         if !exited_success {
+                            job.stderr_hup = true;
+                            job.stdout_hup = true;
                             let job = &self.running[i].as_ref().unwrap();
                             if job.is_errorcmd {
                                 self.snare.error(&format!(
@@ -276,6 +299,7 @@ impl JobRunner {
                                 job.child = errorchild;
                                 job.is_errorcmd = true;
                                 job.finish_by = finish_by;
+                                self.update_pollfds();
                                 continue;
                             }
                         }
@@ -679,6 +703,15 @@ struct Job {
     stdout_hup: bool,
     /// The `RepoConfig` for this job.
     rconf: RepoConfig,
+}
+
+/// Drain all readily available data from `pipe` into `out`. Note: this function deliberately
+/// swallows errors.
+fn drain_pipe<P: Read + AsRawFd>(pipe: &mut P, out: &mut impl Write) {
+    let mut available: c_int = 0;
+    if unsafe { ioctl(pipe.as_raw_fd(), libc::FIONREAD, &mut available) } != -1 {
+        io::copy(&mut pipe.take(available as u64), out).ok();
+    }
 }
 
 fn set_nonblock(fd: RawFd) -> Result<(), Box<dyn Error>> {

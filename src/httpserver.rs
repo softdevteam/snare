@@ -109,13 +109,15 @@ pub(crate) fn serve(snare: Arc<Snare>) -> Result<(), Box<dyn Error>> {
         if let Ok(p) = std::env::var("SNARE_DEBUG_PORT_PATH") {
             let value = match &listener {
                 Listener::Tcp(listener) => listener.local_addr().unwrap().port().to_string(),
-                Listener::Unix(listener) => listener
-                    .local_addr()
-                    .unwrap()
-                    .as_pathname()
-                    .unwrap()
-                    .to_string_lossy()
-                    .into_owned(),
+                Listener::Unix(_) => {
+                    // On OpenBSD, Rust's stdlib (at least on 1.98.1) clips the last character
+                    // from the path that Listener::Unix returns.
+                    let lk = snare.conf.lock().unwrap();
+                    let ListenAddr::Unix(path) = &lk.listen else {
+                        panic!()
+                    };
+                    path.to_string_lossy().into_owned()
+                }
             };
             std::fs::write(p, value).unwrap();
         }
