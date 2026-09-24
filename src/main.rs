@@ -83,12 +83,11 @@ impl Snare {
     /// the snare.conf file specified when we started. **Note that another thread may have called
     /// this function and caused the config to have changed.**
     fn check_for_sighup(&self) {
-        if self.sighup_occurred.load(Ordering::Relaxed) {
+        if self.sighup_occurred.swap(false, Ordering::Relaxed) {
             match Config::from_path(&self.conf_path) {
                 Ok(conf) => *self.conf.lock().unwrap() = conf,
                 Err(msg) => self.error(&msg),
             }
-            self.sighup_occurred.store(false, Ordering::Relaxed);
         }
     }
 
