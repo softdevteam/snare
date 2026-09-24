@@ -24,8 +24,11 @@ use crate::{config::ListenAddr, queue::QueueJob, Snare};
 static MAX_SIMULTANEOUS_CONNECTIONS: usize = 16;
 /// How long to try reading/writing from a socket before we assume it's died.
 static NET_TIMEOUT: Duration = Duration::from_secs(10);
-/// The maximum payload size we'll accept from a remote in bytes. The main reason to limit this is
-/// to stop large numbers of requests causing us to run out of memory.
+/// Maximum combined size of the HTTP request line and subsequent headers. Set to a high value so
+/// that no plausible client can come close to hitting this.
+static MAX_HTTP_HEADER_SIZE: usize = 8 * 1024;
+/// The maximum payload size we'll accept from a remote in bytes. Set to a high value so that no
+/// plausible client can come close to hitting this.
 static MAX_HTTP_BODY_SIZE: usize = 64 * 1024;
 
 enum Listener {
@@ -326,9 +329,27 @@ fn request(snare: &Arc<Snare>, mut stream: Stream) {
 /// A very literal, and rather unforgiving, implementation of RFC2616 (HTTP/1.1), returning the URL
 /// of GET requests: returns `Err` for anything else.
 fn parse_get(stream: &mut Stream) -> Result<(HashMap<String, String>, Vec<u8>), Box<dyn Error>> {
+    fn read_line(rdr: &mut impl BufRead, bytes_left: &mut usize) -> Result<String, Box<dyn Error>> {
+        if *bytes_left == 0 {
+            return Err("HTTP headers too long".into());
+        }
+        let mut line = String::new();
+        let n = rdr.by_ref().take(*bytes_left as u64).read_line(&mut line)?;
+        *bytes_left -= n;
+        if !line.ends_with('\n') {
+            return Err(if *bytes_left == 0 {
+                "HTTP headers too long"
+            } else {
+                "Incomplete HTTP headers"
+            }
+            .into());
+        }
+        Ok(line)
+    }
+
     let mut rdr = BufReader::new(stream);
-    let mut req_line = String::new();
-    rdr.read_line(&mut req_line)?;
+    let mut header_bytes_left = MAX_HTTP_HEADER_SIZE;
+    let req_line = read_line(&mut rdr, &mut header_bytes_left)?;
 
     // First the request line:
     //   Request-Line   = Method SP Request-URI SP HTTP-Version CRLF
@@ -341,8 +362,7 @@ fn parse_get(stream: &mut Stream) -> Result<(HashMap<String, String>, Vec<u8>), 
     // Consume rest of HTTP request
     let mut headers: Vec<String> = Vec::new();
     loop {
-        let mut line = String::new();
-        rdr.read_line(&mut line)?;
+        let line = read_line(&mut rdr, &mut header_bytes_left)?;
         if line.as_str().trim().is_empty() {
             break;
         }
@@ -376,7 +396,7 @@ fn parse_get(stream: &mut Stream) -> Result<(HashMap<String, String>, Vec<u8>), 
         .ok_or_else(|| "Missing 'Content-Length' header".to_owned())?
         .parse::<usize>()?;
     if len > MAX_HTTP_BODY_SIZE {
-        return Err(format!("Body of {len} bytes too big").into());
+        return Err(format!("HTTP body of {len} bytes too long").into());
     }
     let mut body = vec![0; len];
     rdr.read_exact(&mut body)?;
@@ -468,6 +488,43 @@ fn valid_github_reponame(n: &str) -> bool {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn headers_too_long() {
+        let (reader, mut writer) = UnixStream::pair().unwrap();
+        let request = format!(
+            "POST /x HTTP/1.1\r\nX-Fill: {}\r\n",
+            "a".repeat(MAX_HTTP_HEADER_SIZE)
+        );
+        let sender = thread::spawn(move || writer.write_all(request.as_bytes()));
+
+        let mut stream = Stream::Unix(reader);
+        assert_eq!(
+            parse_get(&mut stream).unwrap_err().to_string(),
+            "HTTP headers too long"
+        );
+        drop(stream);
+        let _ = sender.join().unwrap();
+    }
+
+    #[test]
+    fn body_too_long() {
+        let (reader, mut writer) = UnixStream::pair().unwrap();
+        let request = format!(
+            "POST /x HTTP/1.1\r\nContent-length: {}\r\n\r\n{}",
+            MAX_HTTP_BODY_SIZE + 1,
+            "-".repeat(MAX_HTTP_BODY_SIZE + 1)
+        );
+        let sender = thread::spawn(move || writer.write_all(request.as_bytes()));
+
+        let mut stream = Stream::Unix(reader);
+        assert_eq!(
+            parse_get(&mut stream).unwrap_err().to_string(),
+            "HTTP body of 65537 bytes too long"
+        );
+        drop(stream);
+        let _ = sender.join().unwrap();
+    }
 
     #[test]
     fn github_event() {
