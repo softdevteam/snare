@@ -1,9 +1,13 @@
 use nix::unistd::Uid;
-use std::{error::Error, fs::read_dir, thread::sleep};
+use std::{
+    error::Error,
+    fs::{read_dir, write},
+    thread::sleep,
+};
 use tempfile::Builder;
 
 mod common;
-use common::run_success;
+use common::{run_success, SNARE_PAUSE};
 
 // Note that `sleep_s` has to be a fairly high value as we really hope that snare has finished
 // processing all the jobs we've thrown at it. There's no easy way to do that other than waiting
@@ -116,4 +120,62 @@ fn parallel() {
     }
 
     assert_eq!(run_queue("parallel", 20, "", 1,).unwrap(), 20);
+}
+
+#[test]
+fn grandchildren_cant_cause_a_stall() {
+    if Uid::current().is_root() {
+        println!("test skipped: cannot run as root");
+        return;
+    }
+
+    // This test is for a bug where when a child process handed off its file descriptors to
+    // grandchildren, snare didn't check whether the child had exited or not.
+
+    let td = Builder::new()
+        .tempdir_in(env!("CARGO_TARGET_TMPDIR"))
+        .unwrap();
+    let tds = td.path().to_str().unwrap();
+    let mut reqs = Vec::new();
+    for i in 0..2 {
+        let path = td.path().to_owned();
+        reqs.push((
+            move |port| {
+                let body = r#"{"repository":{"owner":{"login":"testuser"},"name":"testrepo"}}"#;
+                Ok(format!(
+                    "POST /payload HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Length: {}\r\nContent-Type: application/json\r\nX-GitHub-Event: issues\r\n\r\n{body}",
+                    body.len()
+                ))
+            },
+            move |response: String| {
+                assert!(response.starts_with("HTTP/1.1 200 OK"), "{}", response);
+                if i == 0 {
+                    sleep(SNARE_PAUSE);
+                    assert!(path.join("started").is_file());
+                } else {
+                    // The second request is queued while the first command is still running.
+                    write(path.join("release"), "")?;
+                    sleep(SNARE_PAUSE);
+                    assert!(path.join("second").is_file());
+                }
+                Ok(())
+            },
+        ));
+    }
+
+    // The first command exits after "release" appears, leaving a background process holding
+    // stdout/stderr open. Both loops stop when the temporary directory is removed, even on failure.
+    run_success(
+        &format!(
+            r#"listen = "127.0.0.1:0";
+maxjobs = 2;
+github {{
+  match ".*" {{
+    cmd = "if [ -f {tds}/started ]; then touch {tds}/second; else touch {tds}/started; while [ -d {tds} ] && [ ! -f {tds}/release ]; do sleep 0.01; done; (while [ -d {tds} ]; do sleep 0.1; done) & fi";
+  }}
+}}"#
+        ),
+        &reqs,
+    )
+    .unwrap();
 }
