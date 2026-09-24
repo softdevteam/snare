@@ -86,7 +86,7 @@ impl Queue {
         for (k, v) in self.q.iter() {
             if let Some(qj) = v.front() {
                 if let Some(et) = earliest_time {
-                    if et > qj.req_time {
+                    if et < qj.req_time {
                         continue;
                     }
                 }
@@ -105,5 +105,38 @@ impl Queue {
         // If there's an `Entry` for the key, then the corresponding value vec has at least one
         // value, so both unwrap()s are safe.
         earliest_key.map(|k| self.q.get_mut(&k).unwrap().pop_front().unwrap())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{thread::sleep, time::Duration};
+
+    fn job(repo_id: &str, req_time: Instant) -> QueueJob {
+        QueueJob::new(
+            repo_id.to_owned(),
+            "owner".to_owned(),
+            repo_id.to_owned(),
+            req_time,
+            "push".to_owned(),
+            "{}".to_owned(),
+            RepoConfig {
+                cmd: None,
+                errorcmd: None,
+                queuekind: QueueKind::Sequential,
+                timeout: 1,
+            },
+        )
+    }
+
+    #[test]
+    fn pop_returns_oldest_runnable_job() {
+        let mut queue = Queue::new();
+        queue.push_back(job("j1", Instant::now()));
+        sleep(Duration::from_millis(1));
+        queue.push_back(job("j2", Instant::now()));
+
+        assert_eq!(queue.pop(|_| false).unwrap().repo_id, "j1");
     }
 }
