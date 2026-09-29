@@ -189,7 +189,7 @@ impl JobRunner {
             // has been received?
             let mut check_exit = false;
             match self.pollfds[self.maxjobs * 2].revents() {
-                Some(flags) if flags == PollFlags::POLLIN => {
+                Some(flags) if flags.contains(PollFlags::POLLIN) => {
                     check_exit = true;
                     check_queue = true;
                     // It's fine for us to drain the event pipe completely: we'll process all the
