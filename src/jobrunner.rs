@@ -26,6 +26,7 @@ use std::{
 
 use libc::{c_int, ioctl};
 use nix::{
+    errno::Errno,
     fcntl::{fcntl, FcntlArg, OFlag},
     poll::{poll, PollFd, PollFlags},
     sys::signal::{kill, Signal},
@@ -117,7 +118,14 @@ impl JobRunner {
                 }
             };
 
-            poll(&mut self.pollfds, timeout).ok();
+            match poll(&mut self.pollfds, timeout) {
+                Ok(_) => (),
+                Err(Errno::EINTR) => continue,
+                Err(e) => {
+                    self.snare.error(&format!("poll error: {e}",));
+                    continue;
+                }
+            }
 
             self.check_for_sighup();
 
