@@ -1,6 +1,17 @@
-# Unreleased
+# snare 0.4.14 (2026-11-22)
 
-* Allow the HTTP server to listen on a Unix-domain socket.
+* Allow the HTTP server to listen on a Unix-domain socket with
+  `listen="unix:/path/to/socket"`.
+
+* Ensure that grandchildren cannot keep an exited child alive.
+
+* Make sure that jobs are popped in FIFO order.
+
+* Don't swallow repeated `SIGHUP`s.
+
+* Force a limit on the size of HTTP headers.
+
+* Handle errors from `poll` properly.
 
 
 # snare 0.4.13 (2026-05-03)
